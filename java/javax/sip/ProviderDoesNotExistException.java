@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class ProviderDoesNotExistException extends Exception {
+public class ProviderDoesNotExistException extends SipException {
     public ProviderDoesNotExistException(){
     }
 

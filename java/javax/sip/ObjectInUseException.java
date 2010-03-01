@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class ObjectInUseException extends Exception {
+public class ObjectInUseException extends SipException {
     public ObjectInUseException() {
     }
 

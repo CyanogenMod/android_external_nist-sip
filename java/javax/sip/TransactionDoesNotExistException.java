@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class TransactionDoesNotExistException extends Exception {
+public class TransactionDoesNotExistException extends SipException {
     public TransactionDoesNotExistException(){
     }
 

@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class InvalidArgumentException extends Exception {
+public class InvalidArgumentException extends SipException {
     public InvalidArgumentException() {
     }
 

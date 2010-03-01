@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class PeerUnavailableException extends Exception {
+public class PeerUnavailableException extends SipException {
     public PeerUnavailableException() {
     }
 

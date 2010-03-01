@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class DialogDoesNotExistException extends Exception {
+public class DialogDoesNotExistException extends SipException {
     public DialogDoesNotExistException(){
     }
 

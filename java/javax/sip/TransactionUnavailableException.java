@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class TransactionUnavailableException extends Exception {
+public class TransactionUnavailableException extends SipException {
     public TransactionUnavailableException() {
     }
 

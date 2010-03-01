@@ -1,6 +1,6 @@
 package javax.sip;
 
-public class TransportNotSupportedException extends Exception {
+public class TransportNotSupportedException extends SipException {
     public TransportNotSupportedException() {
     }
 
