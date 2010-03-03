@@ -18,6 +18,10 @@ package android.net.sip;
 
 import android.util.Log;
 
+import gov.nist.javax.sip.SipStackExt;
+import gov.nist.javax.sip.clientauthutils.AccountManager;
+import gov.nist.javax.sip.clientauthutils.AuthenticationHelper;
+
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.EventObject;
@@ -45,6 +49,7 @@ import javax.sip.header.CSeqHeader;
 import javax.sip.header.CallIdHeader;
 import javax.sip.header.ContactHeader;
 import javax.sip.header.FromHeader;
+import javax.sip.header.Header;
 import javax.sip.header.HeaderFactory;
 import javax.sip.header.MaxForwardsHeader;
 import javax.sip.header.ToHeader;
@@ -127,7 +132,7 @@ class SipHelper {
     private ContactHeader createContactHeader(SipProfile profile)
             throws ParseException, InvalidArgumentException {
         ListeningPoint lp = mSipProvider.getListeningPoint("udp");
-        SipURI contactURI = createSipUri(profile.getUsername(), lp);
+        SipURI contactURI = createSipUri(profile.getUserName(), lp);
 
         Address contactAddress = mAddressFactory.createAddress(contactURI);
         contactAddress.setDisplayName(profile.getDisplayName());
@@ -144,6 +149,47 @@ class SipHelper {
             throw new RuntimeException(e);
         }
         return uri;
+    }
+
+    public ClientTransaction sendRegister(SipProfile userProfile, String tag)
+            throws SipException {
+        try {
+            FromHeader fromHeader = createFromHeader(userProfile, tag);
+            ToHeader toHeader = createToHeader(userProfile);
+            SipURI requestURI = userProfile.getUri();
+            List<ViaHeader> viaHeaders = createViaHeaders();
+            CallIdHeader callIdHeader = createCallIdHeader();
+            CSeqHeader cSeqHeader = createCSeqHeader(1, Request.REGISTER);
+            MaxForwardsHeader maxForwards = createMaxForwardsHeader();
+
+            Request request = mMessageFactory.createRequest(requestURI,
+                    Request.REGISTER, callIdHeader, cSeqHeader, fromHeader,
+                    toHeader, viaHeaders, maxForwards);
+
+            request.addHeader(createContactHeader(userProfile));
+            request.addHeader(mHeaderFactory.createExpiresHeader(60));
+            Header userAgentHeader = mHeaderFactory.createHeader("User-Agent",
+                    "AndroidSip/0.1.001");
+            request.addHeader(userAgentHeader);
+
+            ClientTransaction clientTransaction =
+                    mSipProvider.getNewClientTransaction(request);
+            clientTransaction.sendRequest();
+            return clientTransaction;
+        } catch (ParseException e) {
+            throw new SipException("sendRegister()", e);
+        }
+    }
+
+    public void handleChallenge(ResponseEvent responseEvent,
+            SipProfile userProfile) throws SipException {
+        AuthenticationHelper authenticationHelper =
+                ((SipStackExt) mSipStack).getAuthenticationHelper(
+                new AccountInfo(userProfile), mHeaderFactory);
+        ClientTransaction tid = responseEvent.getClientTransaction();
+        ClientTransaction ct = authenticationHelper.handleChallenge(
+                responseEvent.getResponse(), tid, mSipProvider, 5);
+        ct.sendRequest();
     }
 
     public ClientTransaction sendInvite(SipProfile caller, SipProfile callee,

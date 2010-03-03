@@ -377,9 +377,19 @@ public class SipManager implements SipListener {
 
         private boolean registeringToReady(EventObject evt)
                 throws SipException {
-            // TODO: registration action
-            mState = SipSessionState.READY_FOR_CALL;
-            return true;
+            if (expectResponse(Response.OK, Request.REGISTER, evt)) {
+                reset();
+                mListener.onRegistrationDone(this);
+                return true;
+            }
+            if (expectResponse(Response.UNAUTHORIZED, Request.REGISTER, evt) ||
+                    expectResponse(Response.PROXY_AUTHENTICATION_REQUIRED,
+                    Request.REGISTER, evt)) {
+                mSipHelper.handleChallenge((ResponseEvent)evt, mLocalProfile);
+                return true;
+            }
+            //TODO: handle error conditions
+            return false;
         }
 
         private boolean readyForCall(EventObject evt) throws SipException {
@@ -403,8 +413,10 @@ public class SipManager implements SipListener {
                 mListener.onRinging(SipSessionImpl.this);
                 return true;
             } else if (REGISTER == evt) {
-                // TODO: registration action
-                //mState = SipSessionState.REGISTERING;
+                mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
+                        generateTag());
+                mDialog = mClientTransaction.getDialog();
+                mState = SipSessionState.REGISTERING;
                 return true;
             }
             return false;

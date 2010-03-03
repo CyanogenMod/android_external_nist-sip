@@ -16,6 +16,8 @@
 
 package android.net.sip;
 
+import gov.nist.javax.sip.clientauthutils.UserCredentials;
+
 import java.text.ParseException;
 import javax.sip.InvalidArgumentException;
 import javax.sip.ListeningPoint;
@@ -28,7 +30,7 @@ import javax.sip.address.URI;
 
 /**
  */
-public class SipProfile {
+public class SipProfile implements UserCredentials {
     private Address mAddress;
     private String mPassword;
     private String mDomain;
@@ -127,12 +129,17 @@ public class SipProfile {
         return mAddress.getDisplayName();
     }
 
-    public String getUsername() {
+    /* UserCredentials APIs */
+    public String getUserName() {
         return getUri().getUser();
     }
 
     public String getPassword() {
         return mPassword;
+    }
+
+    public String getSipDomain() {
+        return mDomain;
     }
 
     public String getServerAddress() {
@@ -141,10 +148,6 @@ public class SipProfile {
 
     public int getPort() {
         return getUri().getPort();
-    }
-
-    public String getDomain() {
-        return mDomain;
     }
 
     public String getProtocol() {
