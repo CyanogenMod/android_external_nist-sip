@@ -16,12 +16,14 @@
 
 package android.net.sip;
 
+import javax.sip.Dialog;
 import javax.sip.SipException;
 
 public interface SipSession {
     SipProfile getLocalProfile();
     SipProfile getPeerProfile();
     SipSessionState getState();
+    Dialog getDialog();
 
     void makeCall(SipProfile party, SessionDescription sessionDescription)
             throws SipException;

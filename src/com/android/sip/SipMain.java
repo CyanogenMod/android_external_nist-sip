@@ -18,9 +18,9 @@ package com.android.sip;
 
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
-import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipSession;
+import android.net.sip.SipSessionLayer;
 import android.net.sip.SipSessionListener;
 import android.os.Bundle;
 import android.preference.EditTextPreference;
@@ -37,13 +37,14 @@ import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.text.ParseException;
+import javax.sdp.SdpParseException;
 import javax.sip.SipException;
 
 /**
  */
 public class SipMain extends PreferenceActivity
         implements Preference.OnPreferenceChangeListener {
-    private static final String TAG = SipMain.class.getName();
+    private static final String TAG = SipMain.class.getSimpleName();
     private static final int MENU_REGISTER = Menu.FIRST;
     private static final int MENU_CALL = Menu.FIRST + 1;
     private static final int MENU_HANGUP = Menu.FIRST + 2;
@@ -56,7 +57,7 @@ public class SipMain extends PreferenceActivity
     private EditTextPreference mLocalMediaPort;
     private Preference mMyIp;
 
-    private SipManager mSipManager;
+    private SipSessionLayer mSipSessionLayer;
     private SipSession mSipSession;
     private SipSession mSipCallSession;
     private boolean mHolding = false;
@@ -112,9 +113,9 @@ public class SipMain extends PreferenceActivity
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (mSipManager != null) {
-            mSipManager.release();
-            mSipManager = null;
+        if (mSipSessionLayer != null) {
+            mSipSessionLayer.close();
+            mSipSessionLayer = null;
             mSipSession = null;
         }
     }
@@ -125,11 +126,16 @@ public class SipMain extends PreferenceActivity
         return true;
     }
 
+    private String getText(EditTextPreference preference) {
+        CharSequence text = preference.getText();
+        return ((text == null) ? "" : text.toString());
+    }
+
     private SipProfile createLocalSipProfile() {
         try {
             return new SipProfile.Builder(getServerUri())
-                    .setPassword(mPassword.getText().toString())
-                    .setDisplayName(mDisplayName.getText().toString())
+                    .setPassword(getText(mPassword))
+                    .setDisplayName(getText(mDisplayName))
                     .build();
         } catch (ParseException e) {
             throw new RuntimeException(e);
@@ -159,8 +165,15 @@ public class SipMain extends PreferenceActivity
 
     private SipSessionListener createSipSessionListener() {
         return new SipSessionListener() {
-            public void onRinging(SipSession session) {
-                Log.v(TAG, "sip call ringing: " + session);
+            public void onRinging(
+                    SipSession session, byte[] sessionDescription) {
+                try {
+                    SdpSessionDescription sd =
+                            new SdpSessionDescription(sessionDescription);
+                    Log.v(TAG, "sip call ringing: " + session + ": " + sd);
+                } catch (SdpParseException e) {
+                    Log.e(TAG, "createSessionDescription()", e);
+                }
                 setCallStatus();
             }
 
@@ -178,6 +191,7 @@ public class SipMain extends PreferenceActivity
             public void onCallEnded(SipSession session) {
                 Log.v(TAG, "sip call ended: " + session);
                 mSipCallSession = null;
+                mHolding = false;
                 setCallStatus();
             }
 
@@ -196,6 +210,7 @@ public class SipMain extends PreferenceActivity
 
             public void onError(SipSession session, Throwable e) {
                 Log.v(TAG, "sip session error: " + e);
+                mHolding = false;
                 setCallStatus();
             }
 
@@ -218,7 +233,7 @@ public class SipMain extends PreferenceActivity
 
     private SipSession createSipSession() {
         try {
-            return mSipManager.createSipSession(createLocalSipProfile(),
+            return mSipSessionLayer.createSipSession(createLocalSipProfile(),
                     createSipSessionListener());
         } catch (SipException e) {
             // TODO: toast
@@ -229,7 +244,8 @@ public class SipMain extends PreferenceActivity
 
     private void setupSipStack() {
         if (mSipSession == null) {
-            mSipManager = new SipManager(getLocalIp());
+            mSipSessionLayer = new SipSessionLayer();
+            mSipSessionLayer.open(getLocalIp());
             mSipSession = createSipSession();
         }
     }
@@ -266,7 +282,7 @@ public class SipMain extends PreferenceActivity
     private void holdOrEndCall() {
         SipSession session = getActiveSession();
         try {
-            if (Math.random() > 0.2) {
+            if (Math.random() > 0.4) {
                 session.changeCall(getHoldSdp());
                 mHolding = true;
             } else {
@@ -306,18 +322,26 @@ public class SipMain extends PreferenceActivity
     private SessionDescription getSdp() {
         // TODO: integrate with SDP
         String localIp = getLocalIp();
-        return new SdpSessionDescription("v=0\r\n"
-                + "o=4855 13760799956958020 13760799956958020"
-                + " IN IP4 " + localIp + "\r\n" + "s=mysession session\r\n"
-                + "p=+46 8 52018010\r\n" + "c=IN IP4 " + localIp + "\r\n"
-                + "t=0 0\r\n" + "m=audio 6022 RTP/AVP 0 4 18\r\n"
-                + "a=rtpmap:0 PCMU/8000\r\n" +"a=rtpmap:4 G723/8000\r\n"
-                + "a=rtpmap:18 G729A/8000\r\n" + "a=ptime:20\r\n");
+        try {
+            return new SdpSessionDescription("v=0\r\n"
+                    + "o=4855 13760799956958020 13760799956958020"
+                    + " IN IP4 " + localIp + "\r\n" + "s=mysession session\r\n"
+                    + "p=+46 8 52018010\r\n" + "c=IN IP4 " + localIp + "\r\n"
+                    + "t=0 0\r\n" + "m=audio 6022 RTP/AVP 0 4 18\r\n"
+                    + "a=rtpmap:0 PCMU/8000\r\n" +"a=rtpmap:4 G723/8000\r\n"
+                    + "a=rtpmap:18 G729A/8000\r\n" + "a=ptime:20\r\n");
+        } catch (SdpParseException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private SessionDescription getHoldSdp() {
-        return new SdpSessionDescription(
-                new String(getSdp().getContent()) + "a=sendonly\r\n");
+        try {
+            return new SdpSessionDescription(
+                    new String(getSdp().getContent()) + "a=sendonly\r\n");
+        } catch (SdpParseException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private SessionDescription getContinueSdp() {
@@ -359,7 +383,7 @@ public class SipMain extends PreferenceActivity
     }
 
     private String getPeerUri() {
-        return mPeerUri.getText();
+        return getText(mPeerUri);
     }
 
     private String getPeerMediaAddress() {
@@ -368,11 +392,11 @@ public class SipMain extends PreferenceActivity
     }
 
     private String getServerUri() {
-        return mServerUri.getText();
+        return getText(mServerUri);
     }
 
     private int getLocalMediaPort() {
-        return Integer.parseInt(mLocalMediaPort.getText());
+        return Integer.parseInt(getText(mLocalMediaPort));
     }
 
     private int getPeerMediaPort() {
@@ -427,9 +451,11 @@ public class SipMain extends PreferenceActivity
         case OUTGOING_CALL_CANCELING:
             return "Cancelling...";
         case IN_CALL:
-            return (mHolding ? "Holding..." : "Established");
-        case ENDING_CALL:
-            return "Ending call...";
+            return (mHolding ? "On hold" : "Established");
+        case IN_CALL_CHANGING:
+            return "Changing session...";
+        case IN_CALL_ANSWERING:
+            return "Changing session answering...";
         default:
             return "Unknown";
         }
@@ -452,6 +478,7 @@ public class SipMain extends PreferenceActivity
             break;
         case OUTGOING_CALL_RING_BACK:
         case OUTGOING_CALL:
+        case IN_CALL_CHANGING:
             endCall();
             break;
         case IN_CALL:
@@ -464,7 +491,6 @@ public class SipMain extends PreferenceActivity
         case OUTGOING_CALL_CANCELING:
         case REGISTERING:
         case INCOMING_CALL_ANSWERING:
-        case ENDING_CALL:
         default:
             // do nothing
             break;
