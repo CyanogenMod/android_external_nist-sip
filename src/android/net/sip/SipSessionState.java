@@ -22,6 +22,7 @@ package android.net.sip;
 public enum SipSessionState {
     READY_FOR_CALL,
     REGISTERING,
+    DEREGISTERING,
 	INCOMING_CALL,
 	INCOMING_CALL_ANSWERING,
 	OUTGOING_CALL,

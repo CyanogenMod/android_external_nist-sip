@@ -151,8 +151,8 @@ class SipHelper {
         return uri;
     }
 
-    public ClientTransaction sendRegister(SipProfile userProfile, String tag)
-            throws SipException {
+    public ClientTransaction sendRegister(SipProfile userProfile, String tag,
+            int expiry) throws SipException {
         try {
             FromHeader fromHeader = createFromHeader(userProfile, tag);
             ToHeader toHeader = createToHeader(userProfile);
@@ -167,7 +167,7 @@ class SipHelper {
                     toHeader, viaHeaders, maxForwards);
 
             request.addHeader(createContactHeader(userProfile));
-            request.addHeader(mHeaderFactory.createExpiresHeader(60));
+            request.addHeader(mHeaderFactory.createExpiresHeader(expiry));
             Header userAgentHeader = mHeaderFactory.createHeader("User-Agent",
                     "AndroidSip/0.1.001");
             request.addHeader(userAgentHeader);

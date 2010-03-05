@@ -23,6 +23,8 @@ import java.util.EventObject;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.TooManyListenersException;
 
 import javax.sip.ClientTransaction;
@@ -44,6 +46,7 @@ import javax.sip.TransactionTerminatedEvent;
 import javax.sip.address.Address;
 import javax.sip.address.SipURI;
 import javax.sip.header.CSeqHeader;
+import javax.sip.header.ExpiresHeader;
 import javax.sip.header.FromHeader;
 import javax.sip.message.Message;
 import javax.sip.message.Request;
@@ -55,6 +58,7 @@ import javax.sip.message.Response;
  */
 public class SipManager implements SipListener {
     private static final String TAG = SipManager.class.getSimpleName();
+    private static final int    EXPIRY_TIME = 3600;
 
     private static final EventObject REGISTER = new EventObject("Register");
     private static final EventObject DEREGISTER = new EventObject("Deregister");
@@ -328,6 +332,7 @@ public class SipManager implements SipListener {
             boolean processed;
             switch (mState) {
             case REGISTERING:
+            case DEREGISTERING:
                 processed = registeringToReady(event);
                 break;
             case READY_FOR_CALL:
@@ -375,9 +380,29 @@ public class SipManager implements SipListener {
             return false;
         }
 
+        private void scheduleRegistrationRefreshing(
+                ExpiresHeader expiresHeader) {
+            int expires = EXPIRY_TIME;
+            if (expiresHeader != null) expires = expiresHeader.getExpires();
+            Log.v(TAG, "Refresh registration " + expires + "s later.");
+            new Timer().schedule(new TimerTask() {
+                    public void run() {
+                        try {
+                            process(REGISTER);
+                        } catch (SipException e) {
+                            Log.e(TAG, "", e);
+                        }
+                    }}, expires * 1000L);
+        }
+
         private boolean registeringToReady(EventObject evt)
                 throws SipException {
             if (expectResponse(Response.OK, Request.REGISTER, evt)) {
+                if (mState == SipSessionState.REGISTERING) {
+                    scheduleRegistrationRefreshing((ExpiresHeader)(
+                            ((ResponseEvent)evt).getResponse().getHeader(
+                            ExpiresHeader.NAME)));
+                }
                 reset();
                 mListener.onRegistrationDone(this);
                 return true;
@@ -414,9 +439,13 @@ public class SipManager implements SipListener {
                 return true;
             } else if (REGISTER == evt) {
                 mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
-                        generateTag());
-                mDialog = mClientTransaction.getDialog();
+                        generateTag(), EXPIRY_TIME);
                 mState = SipSessionState.REGISTERING;
+                return true;
+            } else if (DEREGISTER == evt) {
+                mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
+                        generateTag(), 0);
+                mState = SipSessionState.DEREGISTERING;
                 return true;
             }
             return false;
