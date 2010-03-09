@@ -16,30 +16,33 @@
 
 package android.net.sip;
 
-import gov.nist.javax.sdp.*;
-import gov.nist.javax.sdp.fields.*;
+import gov.nist.javax.sdp.SessionDescriptionImpl;
+import gov.nist.javax.sdp.fields.AttributeField;
+import gov.nist.javax.sdp.fields.ConnectionField;
+import gov.nist.javax.sdp.fields.MediaField;
+import gov.nist.javax.sdp.fields.OriginField;
+import gov.nist.javax.sdp.fields.ProtoVersionField;
+import gov.nist.javax.sdp.fields.SessionNameField;
+import gov.nist.javax.sdp.fields.TimeField;
 import gov.nist.javax.sdp.parser.SDPAnnounceParser;
 
 import java.text.ParseException;
 import java.util.Vector;
-import javax.sdp.*;
+import javax.sdp.Connection;
+import javax.sdp.MediaDescription;
+import javax.sdp.SdpException;
 import javax.sip.SipException;
 
 public class SdpSessionDescription implements SessionDescription {
     private SessionDescriptionImpl mSessionDescription;
+    private String mPeerMediaAddress;
+    private int mPeerMediaPort;
 
-    public SdpSessionDescription(String sdpString) throws SdpParseException {
-        try {
-            mSessionDescription = new SDPAnnounceParser(sdpString).parse();
-        } catch (ParseException e) {
-            throw new SdpParseException(e.toString(), e);
-        }
-    }
     public static class Builder {
         private SdpSessionDescription mSdp = new SdpSessionDescription();
         private SessionDescriptionImpl mSessionDescription;
 
-        public Builder(String sessionName) throws SdpParseException {
+        public Builder(String sessionName) throws SdpException {
             mSessionDescription = new SessionDescriptionImpl();
             try {
                 ProtoVersionField proto = new ProtoVersionField();
@@ -54,12 +57,12 @@ public class SdpSessionDescription implements SessionDescription {
                 session.setValue(sessionName);
                 mSessionDescription.addField(session);
             } catch (Exception e) {
-                throw new SdpParseException(e.toString(), e);
+                throw new SdpException(e.toString(), e);
             }
         }
 
         public Builder setConnectionInfo(String netType, String addrType,
-                String addr) throws SdpParseException {
+                String addr) throws SdpException {
             try {
                 ConnectionField connection = new ConnectionField();
                 connection.setNetworkType(netType);
@@ -67,14 +70,14 @@ public class SdpSessionDescription implements SessionDescription {
                 connection.setAddress(addr);
                 mSessionDescription.addField(connection);
             } catch (Exception e) {
-                throw new SdpParseException(e.toString(), e);
+                throw new SdpException(e.toString(), e);
             }
             return this;
         }
 
         public Builder setOrigin(SipProfile user, long sessionId,
                 long sessionVersion, String networkType, String addressType,
-                String address) throws SdpParseException {
+                String address) throws SdpException {
             try {
                 OriginField origin = new OriginField();
                 origin.setUsername(user.getUserName());
@@ -85,13 +88,13 @@ public class SdpSessionDescription implements SessionDescription {
                 origin.setAddress(address);
                 mSessionDescription.addField(origin);
             } catch (Exception e) {
-                throw new SdpParseException(e.toString(), e);
+                throw new SdpException(e.toString(), e);
             }
             return this;
         }
 
         public Builder addMedia(String media, int port, int numPorts,
-                String transport, Vector types) throws SdpParseException {
+                String transport, Vector types) throws SdpException {
             MediaField field = new MediaField();
             try {
                 field.setMediaType(media);
@@ -101,36 +104,36 @@ public class SdpSessionDescription implements SessionDescription {
                 field.setMediaFormats(types);
                 mSessionDescription.addField(field);
             } catch (Exception e) {
-                throw new SdpParseException(e.toString(), e);
+                throw new SdpException(e.toString(), e);
             }
            return this;
         }
 
         public Builder addMediaAttribute(String name, String value)
-                throws SdpParseException {
+                throws SdpException {
             try {
                 if (mSessionDescription.getMediaDescriptions(false) == null) {
-                    throw new SdpParseException("Should add media first!");
+                    throw new SdpException("Should add media first!");
                 }
                 AttributeField attribute = new AttributeField();
                 attribute.setName(name);
                 attribute.setValueAllowNull(value);
                 mSessionDescription.addField(attribute);
             } catch (Exception e) {
-                throw new SdpParseException(e.toString(), e);
+                throw new SdpException(e.toString(), e);
             }
             return this;
         }
 
         public Builder addSessionAttribute(String name, String value)
-                throws SdpParseException {
+                throws SdpException {
             try {
                 AttributeField attribute = new AttributeField();
                 attribute.setName(name);
                 attribute.setValueAllowNull(value);
                 mSessionDescription.addField(attribute);
             } catch (Exception e) {
-                throw new SdpParseException(e.toString(), e);
+                throw new SdpException(e.toString(), e);
             }
             return this;
         }
@@ -141,10 +144,41 @@ public class SdpSessionDescription implements SessionDescription {
         }
     }
 
-    SdpSessionDescription() { }
+    private SdpSessionDescription() {
+    }
 
-    public SdpSessionDescription(byte[] content) throws SdpParseException {
+    public SdpSessionDescription(String sdpString) throws SdpException {
+        try {
+            mSessionDescription = new SDPAnnounceParser(sdpString).parse();
+        } catch (ParseException e) {
+            throw new SdpException(e.toString(), e);
+        }
+        init();
+    }
+
+    public SdpSessionDescription(byte[] content) throws SdpException {
         this(new String(content));
+    }
+
+    public String getPeerMediaAddress() {
+        return mPeerMediaAddress;
+    }
+
+    public int getPeerMediaPort() {
+        return mPeerMediaPort;
+    }
+
+    private void init() throws SdpException {
+        Vector vector = mSessionDescription.getMediaDescriptions(false);
+        // FIXME
+        MediaDescription md = (MediaDescription) vector.firstElement();
+        mPeerMediaPort = md.getMedia().getMediaPort();
+
+        Connection connection = md.getConnection();
+        if (connection == null) {
+            connection = mSessionDescription.getConnection();
+        }
+        mPeerMediaAddress = connection.getAddress();
     }
 
     public String getType() {
@@ -153,5 +187,9 @@ public class SdpSessionDescription implements SessionDescription {
 
     public byte[] getContent() {
           return mSessionDescription.toString().getBytes();
+    }
+
+    public String toString() {
+        return mSessionDescription.toString();
     }
 }

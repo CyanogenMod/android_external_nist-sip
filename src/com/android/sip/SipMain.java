@@ -40,7 +40,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.text.ParseException;
 import java.util.Vector;
-import javax.sdp.SdpParseException;
+import javax.sdp.SdpException;
 import javax.sip.SipException;
 
 /**
@@ -178,7 +178,7 @@ public class SipMain extends PreferenceActivity
                     SdpSessionDescription sd =
                             new SdpSessionDescription(sessionDescription);
                     Log.v(TAG, "sip call ringing: " + session + ": " + sd);
-                } catch (SdpParseException e) {
+                } catch (SdpException e) {
                     Log.e(TAG, "createSessionDescription()", e);
                 }
                 setCallStatus();
@@ -189,14 +189,23 @@ public class SipMain extends PreferenceActivity
                 setCallStatus();
             }
 
-            public void onCallEstablished(SipSession session) {
-                Log.v(TAG, "sip call established: " + session);
+            public void onCallEstablished(
+                    SipSession session, byte[] sessionDescription) {
+                try {
+                    SdpSessionDescription sd =
+                            new SdpSessionDescription(sessionDescription);
+                    Log.v(TAG, "sip call established: " + session + ": " + sd);
+                    startAudioCall(sd);
+                } catch (SdpException e) {
+                    Log.e(TAG, "createSessionDescription()", e);
+                }
                 mSipCallSession = session;
                 setCallStatus();
             }
 
             public void onCallEnded(SipSession session) {
                 Log.v(TAG, "sip call ended: " + session);
+                stopAudioCall();
                 mSipCallSession = null;
                 mHolding = false;
                 setCallStatus();
@@ -341,12 +350,12 @@ public class SipMain extends PreferenceActivity
                             (long)Math.random() * 10000000L, SDPKeywords.IN,
                             SDPKeywords.IPV4, localIp)
                     .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4, localIp)
-                    .addMedia("audio", 6022, 1, "RTP/AVP", v)
+                    .addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP", v)
                     .addMediaAttribute("rtpmap", "0 PCMU/8000")
                     .addMediaAttribute("rtpmap", "4 G723/8000")
                     .addMediaAttribute("rtpmap", "18 G729A/8000")
                     .addMediaAttribute("ptime", "20");
-        } catch (SdpParseException e) {
+        } catch (SdpException e) {
             throw new RuntimeException(e);
         }
         return sdpBuilder;
@@ -357,13 +366,27 @@ public class SipMain extends PreferenceActivity
             SdpSessionDescription.Builder sdpBuilder = getSdpSampleBuilder();
             sdpBuilder.addMediaAttribute("sendonly", (String)null);
             return sdpBuilder.build();
-        } catch (SdpParseException e) {
+        } catch (SdpException e) {
             throw new RuntimeException(e);
         }
     }
 
     private SessionDescription getContinueSdp() {
         return getSdpSampleBuilder().build();
+    }
+
+    private void startAudioCall(SdpSessionDescription sd) {
+        String peerMediaAddress = sd.getPeerMediaAddress();
+        int peerMediaPort = sd.getPeerMediaPort();
+        Log.i(TAG, "start audiocall " + peerMediaAddress + ":" + peerMediaPort);
+
+        // TODO
+    }
+
+    private void stopAudioCall() {
+        Log.i(TAG, "stop audiocall");
+
+        // TODO
     }
 
     private Preference[] allPreferences() {

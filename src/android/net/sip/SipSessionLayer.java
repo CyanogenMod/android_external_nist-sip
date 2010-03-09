@@ -272,6 +272,7 @@ public class SipSessionLayer implements SipListener {
         private Dialog mDialog;
         private ServerTransaction mServerTransaction;
         private ClientTransaction mClientTransaction;
+        private byte[] mPeerSessionDescription;
 
         SipSessionImpl(SipProfile myself, SipSessionListener listener) {
             mLocalProfile = myself;
@@ -285,6 +286,7 @@ public class SipSessionLayer implements SipListener {
             mDialog = null;
             mServerTransaction = null;
             mClientTransaction = null;
+            mPeerSessionDescription = null;
         }
 
         public SipProfile getLocalProfile() {
@@ -527,8 +529,9 @@ public class SipSessionLayer implements SipListener {
                 mInviteReceived = event;
                 mPeerProfile = createPeerProfile(event.getRequest());
                 mState = SipSessionState.INCOMING_CALL;
+                mPeerSessionDescription = event.getRequest().getRawContent();
                 mListener.onRinging(SipSessionImpl.this,
-                        event.getRequest().getRawContent());
+                        mPeerSessionDescription);
                 return true;
             } else if (REGISTER == evt) {
                 mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
@@ -599,6 +602,7 @@ public class SipSessionLayer implements SipListener {
                     return true;
                 case Response.OK:
                     mSipHelper.sendInviteAck(event, mDialog);
+                    mPeerSessionDescription = response.getRawContent();
                     establishCall(false);
                     return true;
                 default:
@@ -655,8 +659,8 @@ public class SipSessionLayer implements SipListener {
                 RequestEvent event = (RequestEvent) evt;
                 mSipHelper.sendReInviteOk(event, mLocalProfile);
                 mState = SipSessionState.IN_CALL_ANSWERING;
-                mListener.onCallChanged(this,
-                        event.getRequest().getRawContent());
+                mPeerSessionDescription = event.getRequest().getRawContent();
+                mListener.onCallChanged(this, mPeerSessionDescription);
                 return true;
             } else if (isRequestEvent(Request.BYE, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt, Response.OK);
@@ -747,12 +751,12 @@ public class SipSessionLayer implements SipListener {
         private void establishCall(boolean inCall) {
             if (inCall) {
                 mState = SipSessionState.IN_CALL;
-                mListener.onCallEstablished(this);
+                mListener.onCallEstablished(this, mPeerSessionDescription);
             } else {
                 SipSessionImpl newSession = createInCallSipSession();
                 addSipSession(newSession);
                 reset();
-                mListener.onCallEstablished(newSession);
+                newSession.establishCall(true);
             }
         }
 
@@ -779,6 +783,7 @@ public class SipSessionLayer implements SipListener {
             newSession.mState = SipSessionState.IN_CALL;
             newSession.mInviteReceived = mInviteReceived;
             newSession.mDialog = mDialog;
+            newSession.mPeerSessionDescription = mPeerSessionDescription;
             return newSession;
         }
     }

@@ -292,7 +292,7 @@ class SipHelper {
             toHeader.setTag(tag);
             response.addHeader(toHeader);
 
-            request.setContent(sessionDescription.getContent(),
+            response.setContent(sessionDescription.getContent(),
                     mHeaderFactory.createContentTypeHeader(
                             "application", sessionDescription.getType()));
 
