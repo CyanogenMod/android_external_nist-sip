@@ -26,32 +26,78 @@
  ***************************************************************************/
 package gov.nist.core;
 
+import android.util.Log;
 import java.io.*;
 import java.util.Properties;
 
 // BEGIN ANDROID-added
 // TODO: this class should be replaced by android logging mechanism.
 public class LogWriter implements StackLogger {
-    public void logStackTrace() { }
-    public void logStackTrace(int traceLevel) { }
-    public int getLineCount() { return 1; }
-    public void logException(Throwable ex) { }
-    public void logDebug(String message) { }
-    public void logTrace(String message) { }
-    public int getTraceLevel() { return 0; }
-    public void logFatalError(String message) { }
-    public void logError(String message) { }
-    public LogWriter() { }
-	public void setStackProperties(Properties configurationProperties) { }
-    public boolean isLoggingEnabled() { return false; }
-    public boolean isLoggingEnabled(int logLevel) { return false; }
-    public void logError(String message, Exception ex) { }
-    public void logWarning(String string) { }
-    public void logInfo(String string) { }
-    public void disableLogging() { }
-    public void enableLogging() { }
-    public void setBuildTimeStamp(String buildTimeStamp) { }
-	public String getLoggerName() { return "HELLO"; }
+    private static final String TAG = "SIP_STACK";
+
+    private boolean mEnabled = true;
+
+    public void logStackTrace() {
+        // TODO
+    }
+    
+    public void logStackTrace(int traceLevel) {
+        // TODO
+    }
+    
+    public int getLineCount() {
+        return 0;
+    }
+    
+    public void logException(Throwable ex) {
+        Log.e(TAG, "", ex);
+    }
+    public void logDebug(String message) {
+        Log.d(TAG, message);
+    }
+    public void logTrace(String message) {
+        Log.d(TAG, message);
+    }
+    public void logFatalError(String message) {
+        Log.e(TAG, message);
+    }
+    public void logError(String message) {
+        Log.e(TAG, message);
+    }
+    public boolean isLoggingEnabled() {
+        return mEnabled;
+    }
+    public boolean isLoggingEnabled(int logLevel) {
+        // TODO
+        return mEnabled;
+    }
+    public void logError(String message, Exception ex) {
+        Log.e(TAG, message, ex);
+    }
+    public void logWarning(String string) {
+        Log.w(TAG, string);
+    }
+    public void logInfo(String string) {
+        Log.i(TAG, string);
+    }
+    
+    public void disableLogging() {
+        mEnabled = false;
+    }
+
+    public void enableLogging() {
+        mEnabled = true;
+    }
+    
+    public void setBuildTimeStamp(String buildTimeStamp) {
+    }
+     
+    public void setStackProperties(Properties stackProperties) {
+    }
+    
+    public String getLoggerName() {
+        return "Android SIP Logger";
+    }
 }
 // END android-added
 

@@ -16,13 +16,27 @@
 
 package android.net.sip;
 
+import gov.nist.javax.sdp.parser.SDPAnnounceParser;
+
+import java.text.ParseException;
+import javax.sdp.SdpParseException;
 import javax.sip.SipException;
 
 public class SdpSessionDescription implements SessionDescription {
     private String mContent;
+    private javax.sdp.SessionDescription mSessionDescription;
 
-    public SdpSessionDescription(String content) {
-        mContent = content;
+    public SdpSessionDescription(String sdpString) throws SdpParseException {
+        mContent = sdpString;
+        try {
+            mSessionDescription = new SDPAnnounceParser(sdpString).parse();
+        } catch (ParseException e) {
+            throw new SdpParseException(e.toString(), e);
+        }
+    }
+
+    public SdpSessionDescription(byte[] content) throws SdpParseException {
+        this(new String(content));
     }
 
     public String getType() {

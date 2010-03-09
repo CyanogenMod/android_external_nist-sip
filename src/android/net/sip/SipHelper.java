@@ -21,6 +21,7 @@ import android.util.Log;
 import gov.nist.javax.sip.SipStackExt;
 import gov.nist.javax.sip.clientauthutils.AccountManager;
 import gov.nist.javax.sip.clientauthutils.AuthenticationHelper;
+import gov.nist.javax.sip.clientauthutils.UserCredentials;
 
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ import java.util.EventObject;
 import java.util.List;
 import javax.sip.ClientTransaction;
 import javax.sip.Dialog;
+import javax.sip.DialogTerminatedEvent;
 import javax.sip.InvalidArgumentException;
 import javax.sip.ListeningPoint;
 import javax.sip.PeerUnavailableException;
@@ -40,6 +42,7 @@ import javax.sip.SipProvider;
 import javax.sip.SipStack;
 import javax.sip.Transaction;
 import javax.sip.TransactionAlreadyExistsException;
+import javax.sip.TransactionTerminatedEvent;
 import javax.sip.TransactionUnavailableException;
 import javax.sip.TransactionState;
 import javax.sip.address.Address;
@@ -105,8 +108,9 @@ class SipHelper {
         return mSipProvider.getNewCallId();
     }
 
-    private CSeqHeader createCSeqHeader(long sequence, String method)
+    private CSeqHeader createCSeqHeader(String method)
             throws ParseException, InvalidArgumentException {
+        long sequence = (long) (Math.random() * 10000);
         return mHeaderFactory.createCSeqHeader(sequence, method);
     }
 
@@ -159,7 +163,7 @@ class SipHelper {
             SipURI requestURI = userProfile.getUri();
             List<ViaHeader> viaHeaders = createViaHeaders();
             CallIdHeader callIdHeader = createCallIdHeader();
-            CSeqHeader cSeqHeader = createCSeqHeader(1, Request.REGISTER);
+            CSeqHeader cSeqHeader = createCSeqHeader(Request.REGISTER);
             MaxForwardsHeader maxForwards = createMaxForwardsHeader();
 
             Request request = mMessageFactory.createRequest(requestURI,
@@ -182,10 +186,16 @@ class SipHelper {
     }
 
     public void handleChallenge(ResponseEvent responseEvent,
-            SipProfile userProfile) throws SipException {
+            final SipProfile userProfile) throws SipException {
+        AccountManager accountManager = new AccountManager() {
+            public UserCredentials getCredentials(ClientTransaction
+                    challengedTransaction, String realm) {
+               return userProfile;
+            }
+        };
         AuthenticationHelper authenticationHelper =
                 ((SipStackExt) mSipStack).getAuthenticationHelper(
-                new AccountInfo(userProfile), mHeaderFactory);
+                        accountManager, mHeaderFactory);
         ClientTransaction tid = responseEvent.getClientTransaction();
         ClientTransaction ct = authenticationHelper.handleChallenge(
                 responseEvent.getResponse(), tid, mSipProvider, 5);
@@ -201,7 +211,7 @@ class SipHelper {
             SipURI requestURI = callee.getUri();
             List<ViaHeader> viaHeaders = createViaHeaders();
             CallIdHeader callIdHeader = createCallIdHeader();
-            CSeqHeader cSeqHeader = createCSeqHeader(1, Request.INVITE);
+            CSeqHeader cSeqHeader = createCSeqHeader(Request.INVITE);
             MaxForwardsHeader maxForwards = createMaxForwardsHeader();
 
             Request request = mMessageFactory.createRequest(requestURI,
@@ -234,7 +244,6 @@ class SipHelper {
             ClientTransaction clientTransaction =
                     mSipProvider.getNewClientTransaction(request);
             clientTransaction.sendRequest();
-            //dialog.sendRequest(clientTransaction);
             return clientTransaction;
         } catch (ParseException e) {
             throw new SipException("sendReinvite()", e);
@@ -349,6 +358,8 @@ class SipHelper {
 
     public void sendCancel(ClientTransaction inviteTransaction)
             throws SipException {
+        // The cancel request must use the same CSeq as the request to cancel
+        // so no need to call dialog.incrementLocalSequenceNumber().
         Request cancelRequest = inviteTransaction.createCancel();
         mSipProvider.getNewClientTransaction(cancelRequest).sendRequest();
     }
@@ -375,16 +386,10 @@ class SipHelper {
     }
 
     public String getSessionKey(SipSession session) {
-        AddressFactory addressFactory = mAddressFactory;
-        String localKey =
-                getSessionKey(session.getLocalProfile().getSipAddress());
-
-        String peerKey = "";
-        SipProfile peer = session.getPeerProfile();
-        if (peer != null) {
-            peerKey = getSessionKey(peer.getSipAddress());
-        }
-        return getCombinedKey(localKey, peerKey);
+        Dialog dialog = session.getDialog();
+        return (dialog == null
+                ?  getSessionKey(session.getLocalProfile().getSipAddress())
+                : dialog.getCallId().getCallId());
     }
 
     public static String[] getPossibleSessionKeys(EventObject event) {
@@ -393,33 +398,42 @@ class SipHelper {
         } else if (event instanceof ResponseEvent) {
             return getPossibleSessionKeys(
                     ((ResponseEvent) event).getResponse());
+        } else if (event instanceof DialogTerminatedEvent) {
+            Dialog dialog = ((DialogTerminatedEvent) event).getDialog();
+            return getPossibleSessionKeys(
+                    ((DialogTerminatedEvent) event).getDialog());
+        } else if (event instanceof TransactionTerminatedEvent) {
+            TransactionTerminatedEvent e = (TransactionTerminatedEvent) event;
+            return getPossibleSessionKeys(e.isServerTransaction()
+                    ? e.getServerTransaction()
+                    : e.getClientTransaction());
         } else {
             Object source = event.getSource();
             if (source instanceof Transaction) {
-                return getPossibleSessionKeys(
-                        ((Transaction) source).getRequest());
+                return getPossibleSessionKeys(((Transaction) source));
             } else if (source instanceof Dialog) {
-                String uri = getSessionKey(((Dialog) source).getLocalParty());
-                return new String[] {uri};
+                return getPossibleSessionKeys((Dialog) source);
             }
         }
-        return null;
+        return new String[0];
     }
 
     private static String[] getPossibleSessionKeys(Message message) {
+        CallIdHeader callIdHeader =
+                (CallIdHeader) message.getHeader(CallIdHeader.NAME);
         FromHeader fromHeader = (FromHeader) message.getHeader(FromHeader.NAME);
         ToHeader toHeader = (ToHeader) message.getHeader(ToHeader.NAME);
-        String fromUri = getSessionKey(fromHeader.getAddress());
-        String toUri = getSessionKey(toHeader.getAddress());
-        return new String[] {getCombinedKey(fromUri, toUri), fromUri, toUri};
+        return new String[] {callIdHeader.getCallId(),
+                getSessionKey(fromHeader.getAddress()),
+                getSessionKey(toHeader.getAddress())};
     }
 
-    private static String getCombinedKey(String oneKey, String theOther) {
-        if (oneKey == null) oneKey = "";
-        if (theOther == null) theOther = "";
-        return ((oneKey.compareTo(theOther) > 0)
-                ? (oneKey + theOther)
-                : (theOther + oneKey));
+    private static String[] getPossibleSessionKeys(Transaction transaction) {
+        return getPossibleSessionKeys(transaction.getRequest());
+    }
+
+    private static String[] getPossibleSessionKeys(Dialog dialog) {
+        return new String[] {dialog.getCallId().getCallId()};
     }
 
     private static String getSessionKey(Address address) {

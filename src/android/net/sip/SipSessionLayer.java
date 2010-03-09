@@ -42,6 +42,7 @@ import javax.sip.SipListener;
 import javax.sip.SipProvider;
 import javax.sip.SipStack;
 import javax.sip.TimeoutEvent;
+import javax.sip.Transaction;
 import javax.sip.TransactionTerminatedEvent;
 import javax.sip.address.Address;
 import javax.sip.address.SipURI;
@@ -56,8 +57,8 @@ import javax.sip.message.Response;
  * @hide
  * Creates and manages multiple {@link SipSession}.
  */
-public class SipManager implements SipListener {
-    private static final String TAG = SipManager.class.getSimpleName();
+public class SipSessionLayer implements SipListener {
+    private static final String TAG = SipSessionLayer.class.getSimpleName();
     private static final int    EXPIRY_TIME = 3600;
 
     private static final EventObject REGISTER = new EventObject("Register");
@@ -73,11 +74,11 @@ public class SipManager implements SipListener {
     private Map<String, SipSessionImpl> mSessionMap =
             new HashMap<String, SipSessionImpl>();
 
-    public SipManager(String myIp) {
-        this(myIp, ListeningPoint.PORT_5060, "Android SIP Stack");
+    public void open(String myIp) {
+        open(myIp, ListeningPoint.PORT_5060, "Android SIP Stack");
     }
 
-    public SipManager(String myIp, int port, String stackName) {
+    public void open(String myIp, int port, String stackName) {
         SipFactory sipFactory = SipFactory.getInstance();
         Properties properties = new Properties();
         properties.setProperty("javax.sip.STACK_NAME", stackName);
@@ -98,7 +99,7 @@ public class SipManager implements SipListener {
         }
     }
 
-    public synchronized void release() {
+    public synchronized void close() {
         if (mSipHelper != null) {
             mSipHelper.getSipStack().stop();
             mSipHelper = null;
@@ -144,8 +145,16 @@ public class SipManager implements SipListener {
 
     private synchronized void removeSipSession(SipSessionImpl session) {
         String key = mSipHelper.getSessionKey(session);
-        Log.v(TAG, " -----  remove session with key:  '" + key + "'");
-        mSessionMap.remove(key);
+        SipSessionImpl s = mSessionMap.remove(key);
+        // sanity check
+        if ((s != null) && (s != session)) {
+            Log.w(TAG, "session " + session + " is not associated with key '"
+                    + key + "'");
+            mSessionMap.put(key, s);
+        } else {
+            Log.v(TAG, "   remove session " + session + " with key '" + key
+                    + "'");
+        }
         for (String k : mSessionMap.keySet()) {
             Log.v(TAG, "   .....  " + k + ": " + mSessionMap.get(k));
         }
@@ -170,11 +179,12 @@ public class SipManager implements SipListener {
     }
 
     public void processTransactionTerminated(TransactionTerminatedEvent event) {
-        // any clean-up?
+        // TODO: clean up if session is in in-transaction states
+        //process(event);
     }
 
     public void processDialogTerminated(DialogTerminatedEvent event) {
-        // any clean-up?
+        process(event);
     }
 
     private void process(EventObject event) {
@@ -203,6 +213,20 @@ public class SipManager implements SipListener {
 
     private static String getCseqMethod(Message message) {
         return ((CSeqHeader) message.getHeader(CSeqHeader.NAME)).getMethod();
+    }
+
+    /**
+     * @return true if the event is a response event and the CSeqHeader method
+     * match the given arguments; false otherwise
+     */
+    private static boolean expectResponse(
+            String expectedMethod, EventObject evt) {
+        if (evt instanceof ResponseEvent) {
+            ResponseEvent event = (ResponseEvent) evt;
+            Response response = event.getResponse();
+            return expectedMethod.equalsIgnoreCase(getCseqMethod(response));
+        }
+        return false;
     }
 
     /**
@@ -271,6 +295,10 @@ public class SipManager implements SipListener {
             return mPeerProfile;
         }
 
+        public synchronized Dialog getDialog() {
+            return mDialog;
+        }
+
         public synchronized SipSessionState getState() {
             return mState;
         }
@@ -303,6 +331,21 @@ public class SipManager implements SipListener {
             process(DEREGISTER);
         }
 
+        private void scheduleNextRegistration(
+                ExpiresHeader expiresHeader) {
+            int expires = EXPIRY_TIME;
+            if (expiresHeader != null) expires = expiresHeader.getExpires();
+            Log.v(TAG, "Refresh registration " + expires + "s later.");
+            new Timer().schedule(new TimerTask() {
+                    public void run() {
+                        try {
+                            process(REGISTER);
+                        } catch (SipException e) {
+                            Log.e(TAG, "", e);
+                        }
+                    }}, expires * 1000L);
+        }
+
         private String generateTag() {
             // TODO: based on myself's profile
             return String.valueOf((long) (Math.random() * 1000000L));
@@ -327,47 +370,54 @@ public class SipManager implements SipListener {
             }
         }
 
-        synchronized void process(EventObject event) throws SipException {
-            Log.v(TAG, " ~~~~~   " + this + ": " + mState + ": processing " + log(event));
+        synchronized void process(EventObject evt) throws SipException {
+            Log.v(TAG, " ~~~~~   " + this + ": " + mState + ": processing " + log(evt));
             boolean processed;
+
             switch (mState) {
             case REGISTERING:
             case DEREGISTERING:
-                processed = registeringToReady(event);
+                processed = registeringToReady(evt);
                 break;
             case READY_FOR_CALL:
-                processed = readyForCall(event);
+                processed = readyForCall(evt);
                 break;
             case INCOMING_CALL:
-                processed = incomingCall(event);
+                processed = incomingCall(evt);
                 break;
             case INCOMING_CALL_ANSWERING:
-                processed = incomingCallToInCall(event);
+                processed = incomingCallToInCall(evt);
                 break;
             case OUTGOING_CALL:
             case OUTGOING_CALL_RING_BACK:
-                processed = outgoingCall(event);
+                processed = outgoingCall(evt);
                 break;
             case OUTGOING_CALL_CANCELING:
-                processed = outgoingCallToReady(event);
+                processed = outgoingCallToReady(evt);
                 break;
             case IN_CALL:
-                processed = inCall(event);
+                processed = inCall(evt);
                 break;
-            case ENDING_CALL:
-                processed = endingCallToReady(event);
+            case IN_CALL_ANSWERING:
+                processed = inCallAnsweringToInCall(evt);
+                break;
+            case IN_CALL_CHANGING:
+                processed = inCallChanging(evt);
+                break;
+            case IN_CALL_CHANGING_CANCELING:
+                processed = inCallChangingToInCall(evt);
                 break;
             default:
                 processed = false;
             }
-            if (!processed && !processOthers(event)) {
+            if (!processed && !processExceptions(evt)) {
                 throw new SipException("event not processed");
             } else {
                 Log.v(TAG, " ~~~~~   new state: " + mState);
             }
         }
 
-        private boolean processOthers(EventObject evt) throws SipException {
+        private boolean processExceptions(EventObject evt) throws SipException {
             // process INVITE and CANCEL
             if (isRequestEvent(Request.INVITE, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt, Response.BUSY_HERE);
@@ -376,40 +426,82 @@ public class SipManager implements SipListener {
                 mSipHelper.sendResponse((RequestEvent) evt,
                         Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST);
                 return true;
+            } else if (evt instanceof TransactionTerminatedEvent) {
+                if (evt instanceof TimeoutEvent) {
+                    processTimeout((TimeoutEvent) evt);
+                } else {
+                    // TODO: any clean up?
+                }
+                return true;
+            } else if (evt instanceof DialogTerminatedEvent) {
+                processDialogTerminated((DialogTerminatedEvent) evt);
+                return true;
             }
             return false;
         }
 
-        private void scheduleRegistrationRefreshing(
-                ExpiresHeader expiresHeader) {
-            int expires = EXPIRY_TIME;
-            if (expiresHeader != null) expires = expiresHeader.getExpires();
-            Log.v(TAG, "Refresh registration " + expires + "s later.");
-            new Timer().schedule(new TimerTask() {
-                    public void run() {
-                        try {
-                            process(REGISTER);
-                        } catch (SipException e) {
-                            Log.e(TAG, "", e);
-                        }
-                    }}, expires * 1000L);
+        private void processDialogTerminated(DialogTerminatedEvent event) {
+            if (mDialog == event.getDialog()) {
+                endCall(isInCall());
+            } else {
+                Log.d(TAG, "not the current dialog; current=" + mDialog
+                        + ", terminated=" + event.getDialog());
+            }
+        }
+
+        private void processTimeout(TimeoutEvent event) {
+            Log.d(TAG, "processing Timeout..." + event);
+            Transaction current = event.isServerTransaction()
+                    ? mServerTransaction
+                    : mClientTransaction;
+            Transaction target = event.isServerTransaction()
+                    ? event.getServerTransaction()
+                    : event.getClientTransaction();
+
+            if (current != target) {
+                Log.d(TAG, "not the current transaction; current=" + current
+                        + ", timed out=" + target);
+                return;
+            }
+            switch (mState) {
+            case REGISTERING:
+            case INCOMING_CALL:
+            case INCOMING_CALL_ANSWERING:
+            case OUTGOING_CALL:
+            case OUTGOING_CALL_RING_BACK:
+            case OUTGOING_CALL_CANCELING:
+            case IN_CALL_CHANGING:
+                // rfc3261#section-14.1
+                // if re-invite gets timed out, terminate the dialog
+                endCallOnError((mState == SipSessionState.IN_CALL_CHANGING),
+                        new SipException("timed out"));
+                break;
+            case IN_CALL_ANSWERING:
+            case IN_CALL_CHANGING_CANCELING:
+                mState = SipSessionState.IN_CALL;
+                mListener.onError(this, new SipException("timed out"));
+                break;
+            default:
+                // do nothing
+                break;
+            }
         }
 
         private boolean registeringToReady(EventObject evt)
                 throws SipException {
             if (expectResponse(Response.OK, Request.REGISTER, evt)) {
                 if (mState == SipSessionState.REGISTERING) {
-                    scheduleRegistrationRefreshing((ExpiresHeader)(
-                            ((ResponseEvent)evt).getResponse().getHeader(
-                            ExpiresHeader.NAME)));
+                    scheduleNextRegistration((ExpiresHeader)
+                            ((ResponseEvent) evt).getResponse().getHeader(
+                                    ExpiresHeader.NAME));
                 }
                 reset();
                 mListener.onRegistrationDone(this);
                 return true;
             }
-            if (expectResponse(Response.UNAUTHORIZED, Request.REGISTER, evt) ||
-                    expectResponse(Response.PROXY_AUTHENTICATION_REQUIRED,
-                    Request.REGISTER, evt)) {
+            if (expectResponse(Response.UNAUTHORIZED, Request.REGISTER, evt)
+                    || expectResponse(Response.PROXY_AUTHENTICATION_REQUIRED,
+                            Request.REGISTER, evt)) {
                 mSipHelper.handleChallenge((ResponseEvent)evt, mLocalProfile);
                 return true;
             }
@@ -435,11 +527,13 @@ public class SipManager implements SipListener {
                 mInviteReceived = event;
                 mPeerProfile = createPeerProfile(event.getRequest());
                 mState = SipSessionState.INCOMING_CALL;
-                mListener.onRinging(SipSessionImpl.this);
+                mListener.onRinging(SipSessionImpl.this,
+                        event.getRequest().getRawContent());
                 return true;
             } else if (REGISTER == evt) {
                 mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
                         generateTag(), EXPIRY_TIME);
+                mDialog = mClientTransaction.getDialog();
                 mState = SipSessionState.REGISTERING;
                 return true;
             } else if (DEREGISTER == evt) {
@@ -455,17 +549,15 @@ public class SipManager implements SipListener {
             // expect MakeCallCommand(answering) , END_CALL cmd , Cancel request
             if (evt instanceof MakeCallCommand) {
                 // answer call
-                MakeCallCommand cmd = (MakeCallCommand) evt;
-
                 mSipHelper.sendInviteOk(mInviteReceived, mLocalProfile,
-                        cmd.getSessionDescription(), generateTag(),
-                        mServerTransaction);
+                        ((MakeCallCommand) evt).getSessionDescription(),
+                        generateTag(), mServerTransaction);
                 mState = SipSessionState.INCOMING_CALL_ANSWERING;
                 return true;
             } else if (END_CALL == evt) {
                 mSipHelper.sendInviteBusyHere(mInviteReceived,
                         mServerTransaction);
-                reset();
+                endCall(false);
                 return true;
             } else if (isRequestEvent(Request.CANCEL, evt)) {
                 RequestEvent event = (RequestEvent) evt;
@@ -473,8 +565,7 @@ public class SipManager implements SipListener {
                 mSipHelper.sendInviteRequestTerminated(
                         mInviteReceived.getRequest(),
                         mServerTransaction);
-                reset();
-                mListener.onCallEnded(this);
+                endCall(false);
                 return true;
             }
             return false;
@@ -484,12 +575,9 @@ public class SipManager implements SipListener {
                 throws SipException {
             // expect ACK, CANCEL request
             if (isRequestEvent(Request.ACK, evt)) {
-                SipSessionImpl newSession = createInCallSipSession();
-                addSipSession(newSession);
-                reset();
-                mListener.onCallEstablished(newSession);
+                establishCall(false);
                 return true;
-            } else if (isRequestEvent(Request.ACK, evt)) {
+            } else if (isRequestEvent(Request.CANCEL, evt)) {
                 RequestEvent event = (RequestEvent) evt;
                 // TODO: what to do here? what happens when racing between
                 // OK-to-invite from callee and Cancel from caller
@@ -499,39 +587,33 @@ public class SipManager implements SipListener {
         }
 
         private boolean outgoingCall(EventObject evt) throws SipException {
-            if (evt instanceof ResponseEvent) {
+            if (expectResponse(Request.INVITE, evt)) {
                 ResponseEvent event = (ResponseEvent) evt;
                 Response response = event.getResponse();
-                String method = getCseqMethod(response);
-                if (!method.equalsIgnoreCase(Request.INVITE)) return false;
 
                 int statusCode = response.getStatusCode();
                 switch (statusCode) {
-                case Response.TRYING:
-                    break;
                 case Response.RINGING:
                     mState = SipSessionState.OUTGOING_CALL_RING_BACK;
                     mListener.onRingingBack(this);
-                    break;
+                    return true;
                 case Response.OK:
                     mSipHelper.sendInviteAck(event, mDialog);
-                    SipSessionImpl newSession = createInCallSipSession();
-                    addSipSession(newSession);
-                    reset();
-                    mListener.onCallEstablished(newSession);
-                    break;
+                    establishCall(false);
+                    return true;
                 default:
                     if (statusCode >= 400) {
                         // error: an ack is sent automatically by the stack
-                        reset();
-                        mListener.onCallEnded(this);
-                        break;
+                        endCallOnError(false,
+                                createCallbackException(response));
+                        return true;
                     } else if (statusCode >= 300) {
                         // TODO: handle 3xx (redirect)
+                    } else {
+                        return true;
                     }
-                    return false;
                 }
-                return true;
+                return false;
             } else if (END_CALL == evt) {
                 // RFC says that UA should not send out cancel when no response
                 // comes back yet. We are cheating for not checking response.
@@ -545,57 +627,149 @@ public class SipManager implements SipListener {
         private boolean outgoingCallToReady(EventObject evt)
                 throws SipException {
             if (expectResponse(Response.OK, Request.CANCEL, evt)) {
-                reset();
-                mListener.onCallEnded(this);
+                // do nothing; wait for REQUEST_TERMINATED
+                return true;
+            } else if (expectResponse(Response.REQUEST_TERMINATED,
+                    Request.INVITE, evt)) {
+                endCall(false);
+                return true;
+            } else if (expectResponse(Response.SERVER_INTERNAL_ERROR,
+                    Request.INVITE, evt)) {
+                Response response = ((ResponseEvent) evt).getResponse();
+                endCallOnError(false, createCallbackException(response));
                 return true;
             }
             return false;
         }
 
         private boolean inCall(EventObject evt) throws SipException {
-            // expect END_CALL cmd, OK response retransmission, BYE request,
-            // hold call (MakeCallCommand)
+            // expect END_CALL cmd, BYE request, hold call (MakeCallCommand)
+            // OK retransmission is handled in SipStack
             if (END_CALL == evt) {
+                // rfc3261#section-15.1.1
                 mSipHelper.sendBye(mDialog);
-                mState = SipSessionState.ENDING_CALL;
-                return true;
-            } else if (expectResponse(Response.OK, Request.INVITE, evt)) {
-                // retransmit ack; this may be OK-to-re-invite
-                mSipHelper.sendInviteAck((ResponseEvent) evt, mDialog);
+                endCall(true);
                 return true;
             } else if (isRequestEvent(Request.INVITE, evt)) {
                 // got Re-INVITE
                 RequestEvent event = (RequestEvent) evt;
                 mSipHelper.sendReInviteOk(event, mLocalProfile);
+                mState = SipSessionState.IN_CALL_ANSWERING;
                 mListener.onCallChanged(this,
                         event.getRequest().getRawContent());
                 return true;
             } else if (isRequestEvent(Request.BYE, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt, Response.OK);
-                removeSipSession(this);
-                mListener.onCallEnded(this);
+                endCall(true);
                 return true;
-            } else if (isRequestEvent(Request.ACK, evt)) {
-                // ack the ok-to-re-invite; just consume it
-                return true;
-            } if (evt instanceof MakeCallCommand) {
+            } else if (evt instanceof MakeCallCommand) {
                 // to change call
-                MakeCallCommand cmd = (MakeCallCommand) evt;
-                mClientTransaction = mSipHelper.sendReinvite(
-                        mDialog, cmd.getSessionDescription());
+                mClientTransaction = mSipHelper.sendReinvite(mDialog,
+                        ((MakeCallCommand) evt).getSessionDescription());
+                mState = SipSessionState.IN_CALL_CHANGING;
                 return true;
             }
             return false;
         }
 
-        private boolean endingCallToReady(EventObject evt)
+        private boolean inCallChanging(EventObject evt)
                 throws SipException {
-            if (expectResponse(Response.OK, Request.BYE, evt)) {
-                removeSipSession(this);
-                mListener.onCallEnded(this);
+            if (expectResponse(Request.INVITE, evt)) {
+                ResponseEvent event = (ResponseEvent) evt;
+                Response response = event.getResponse();
+
+                int statusCode = response.getStatusCode();
+                switch (statusCode) {
+                case Response.OK:
+                    mSipHelper.sendInviteAck(event, mDialog);
+                    establishCall(true);
+                    return true;
+                case Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST:
+                case Response.REQUEST_TIMEOUT:
+                    // rfc3261#section-14.1: re-invite failed; terminate dialog
+                    endCallOnError(true, createCallbackException(response));
+                    return true;
+                case Response.REQUEST_PENDING:
+                    // TODO:
+                    // rfc3261#section-14.1; re-schedule invite
+                    return true;
+                default:
+                    if (statusCode >= 400) {
+                        // error: an ack is sent automatically by the stack
+                        mState = SipSessionState.IN_CALL;
+                        mListener.onError(this, createCallbackException(response));
+                        return true;
+                    } else if (statusCode >= 300) {
+                        // TODO: handle 3xx (redirect)
+                    } else {
+                        return true;
+                    }
+                }
+                return false;
+            } else if (END_CALL == evt) {
+                mSipHelper.sendCancel(mClientTransaction);
+                mState = SipSessionState.IN_CALL_CHANGING_CANCELING;
                 return true;
             }
             return false;
+        }
+
+        private boolean inCallChangingToInCall(EventObject evt)
+                throws SipException {
+            if (expectResponse(Response.OK, Request.CANCEL, evt)) {
+                // do nothing; wait for REQUEST_TERMINATED
+                return true;
+            } else if (expectResponse(Response.OK, Request.INVITE, evt)) {
+                inCallChanging(evt); // abort Cancel
+                return true;
+            } else if (expectResponse(Response.REQUEST_TERMINATED,
+                    Request.INVITE, evt)) {
+                establishCall(true);
+                return true;
+            }
+            return false;
+        }
+
+        private boolean inCallAnsweringToInCall(EventObject evt) {
+            // expect ACK
+            if (isRequestEvent(Request.ACK, evt)) {
+                establishCall(true);
+                return true;
+            }
+            return false;
+        }
+
+        private Exception createCallbackException(Response response) {
+            return new SipException("Got response: " + response.getStatusCode()
+                    + " " + response.getReasonPhrase());
+        }
+
+        private void establishCall(boolean inCall) {
+            if (inCall) {
+                mState = SipSessionState.IN_CALL;
+                mListener.onCallEstablished(this);
+            } else {
+                SipSessionImpl newSession = createInCallSipSession();
+                addSipSession(newSession);
+                reset();
+                mListener.onCallEstablished(newSession);
+            }
+        }
+
+        private void endCall(boolean inCall) {
+            if (inCall) removeSipSession(this);
+            reset();
+            mListener.onCallEnded(this);
+        }
+
+        private void endCallOnError(boolean terminating, Throwable throwable) {
+            if (terminating) removeSipSession(this);
+            reset();
+            mListener.onError(this, throwable);
+        }
+
+        private boolean isInCall() {
+            return (mState.compareTo(SipSessionState.IN_CALL) >= 0);
         }
 
         private SipSessionImpl createInCallSipSession() {
