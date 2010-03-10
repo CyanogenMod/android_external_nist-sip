@@ -33,10 +33,13 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import gov.nist.javax.sdp.fields.SDPKeywords;
+
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.text.ParseException;
+import java.util.Vector;
 import javax.sdp.SdpParseException;
 import javax.sip.SipException;
 
@@ -57,6 +60,7 @@ public class SipMain extends PreferenceActivity
     private EditTextPreference mLocalMediaPort;
     private Preference mMyIp;
 
+    private SipProfile mLocalProfile;
     private SipSessionLayer mSipSessionLayer;
     private SipSession mSipSession;
     private SipSession mSipCallSession;
@@ -133,10 +137,13 @@ public class SipMain extends PreferenceActivity
 
     private SipProfile createLocalSipProfile() {
         try {
-            return new SipProfile.Builder(getServerUri())
-                    .setPassword(getText(mPassword))
-                    .setDisplayName(getText(mDisplayName))
-                    .build();
+            if (mLocalProfile == null) {
+                mLocalProfile = new SipProfile.Builder(getServerUri())
+                        .setPassword(getText(mPassword))
+                        .setDisplayName(getText(mDisplayName))
+                        .build();
+            }
+            return mLocalProfile;
         } catch (ParseException e) {
             throw new RuntimeException(e);
         }
@@ -263,7 +270,8 @@ public class SipMain extends PreferenceActivity
 
     private void makeCall() {
         try {
-            mSipSession.makeCall(createPeerSipProfile(), getSdp());
+            mSipSession.makeCall(createPeerSipProfile(),
+                    getSdpSampleBuilder().build());
         } catch (SipException e) {
             // TODO: UI feedback
             Log.e(TAG, "makeCall()", e);
@@ -298,7 +306,7 @@ public class SipMain extends PreferenceActivity
         SipSession session = getActiveSession();
         try {
             if (Math.random() > 0.2) {
-                session.answerCall(getSdp());
+                session.answerCall(getSdpSampleBuilder().build());
             } else {
                 session.endCall();
             }
@@ -319,33 +327,43 @@ public class SipMain extends PreferenceActivity
         }
     }
 
-    private SessionDescription getSdp() {
+    private SdpSessionDescription.Builder getSdpSampleBuilder() {
         // TODO: integrate with SDP
         String localIp = getLocalIp();
+        SdpSessionDescription.Builder sdpBuilder;
         try {
-            return new SdpSessionDescription("v=0\r\n"
-                    + "o=4855 13760799956958020 13760799956958020"
-                    + " IN IP4 " + localIp + "\r\n" + "s=mysession session\r\n"
-                    + "p=+46 8 52018010\r\n" + "c=IN IP4 " + localIp + "\r\n"
-                    + "t=0 0\r\n" + "m=audio 6022 RTP/AVP 0 4 18\r\n"
-                    + "a=rtpmap:0 PCMU/8000\r\n" +"a=rtpmap:4 G723/8000\r\n"
-                    + "a=rtpmap:18 G729A/8000\r\n" + "a=ptime:20\r\n");
+            Vector v = new Vector();
+            v.add(0);
+            v.add(4);
+            v.add(18);
+            sdpBuilder = new SdpSessionDescription.Builder("SIP Call")
+                    .setOrigin(mLocalProfile,  (long)Math.random() * 10000000L,
+                            (long)Math.random() * 10000000L, SDPKeywords.IN,
+                            SDPKeywords.IPV4, localIp)
+                    .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4, localIp)
+                    .addMedia("audio", 6022, 1, "RTP/AVP", v)
+                    .addMediaAttribute("rtpmap", "0 PCMU/8000")
+                    .addMediaAttribute("rtpmap", "4 G723/8000")
+                    .addMediaAttribute("rtpmap", "18 G729A/8000")
+                    .addMediaAttribute("ptime", "20");
         } catch (SdpParseException e) {
             throw new RuntimeException(e);
         }
+        return sdpBuilder;
     }
 
     private SessionDescription getHoldSdp() {
         try {
-            return new SdpSessionDescription(
-                    new String(getSdp().getContent()) + "a=sendonly\r\n");
+            SdpSessionDescription.Builder sdpBuilder = getSdpSampleBuilder();
+            sdpBuilder.addMediaAttribute("sendonly", (String)null);
+            return sdpBuilder.build();
         } catch (SdpParseException e) {
             throw new RuntimeException(e);
         }
     }
 
     private SessionDescription getContinueSdp() {
-        return getSdp();
+        return getSdpSampleBuilder().build();
     }
 
     private Preference[] allPreferences() {
