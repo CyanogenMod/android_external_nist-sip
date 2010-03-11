@@ -27,6 +27,7 @@ import gov.nist.javax.sdp.fields.TimeField;
 import gov.nist.javax.sdp.parser.SDPAnnounceParser;
 
 import java.text.ParseException;
+import java.util.Collections;
 import java.util.Vector;
 import javax.sdp.Connection;
 import javax.sdp.MediaDescription;
@@ -94,14 +95,16 @@ public class SdpSessionDescription implements SessionDescription {
         }
 
         public Builder addMedia(String media, int port, int numPorts,
-                String transport, Vector types) throws SdpException {
+                String transport, Integer... types) throws SdpException {
             MediaField field = new MediaField();
+            Vector<Integer> typeVector = new Vector<Integer>();
+            Collections.addAll(typeVector, types);
             try {
                 field.setMediaType(media);
                 field.setMediaPort(port);
                 field.setPortCount(numPorts);
                 field.setProtocol(transport);
-                field.setMediaFormats(types);
+                field.setMediaFormats(typeVector);
                 mSessionDescription.addField(field);
             } catch (Exception e) {
                 throw new SdpException(e.toString(), e);

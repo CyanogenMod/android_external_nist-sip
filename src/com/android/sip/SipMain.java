@@ -16,6 +16,8 @@
 
 package com.android.sip;
 
+import com.android.sip.media.AudioStream;
+
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipProfile;
@@ -39,7 +41,6 @@ import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.text.ParseException;
-import java.util.Vector;
 import javax.sdp.SdpException;
 import javax.sip.SipException;
 
@@ -64,6 +65,7 @@ public class SipMain extends PreferenceActivity
     private SipSessionLayer mSipSessionLayer;
     private SipSession mSipSession;
     private SipSession mSipCallSession;
+    private AudioStream mAudio;
     private boolean mHolding = false;
 
     @Override
@@ -337,23 +339,16 @@ public class SipMain extends PreferenceActivity
     }
 
     private SdpSessionDescription.Builder getSdpSampleBuilder() {
-        // TODO: integrate with SDP
         String localIp = getLocalIp();
         SdpSessionDescription.Builder sdpBuilder;
         try {
-            Vector v = new Vector();
-            v.add(0);
-            v.add(4);
-            v.add(18);
             sdpBuilder = new SdpSessionDescription.Builder("SIP Call")
                     .setOrigin(mLocalProfile,  (long)Math.random() * 10000000L,
                             (long)Math.random() * 10000000L, SDPKeywords.IN,
                             SDPKeywords.IPV4, localIp)
                     .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4, localIp)
-                    .addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP", v)
-                    .addMediaAttribute("rtpmap", "0 PCMU/8000")
-                    .addMediaAttribute("rtpmap", "4 G723/8000")
-                    .addMediaAttribute("rtpmap", "18 G729A/8000")
+                    .addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP", 8)
+                    .addMediaAttribute("rtpmap", "8 PCMA/8000")
                     .addMediaAttribute("ptime", "20");
         } catch (SdpException e) {
             throw new RuntimeException(e);
@@ -375,18 +370,42 @@ public class SipMain extends PreferenceActivity
         return getSdpSampleBuilder().build();
     }
 
+    private void setAllPreferencesEnabled(final boolean enabled) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                for (Preference preference : allPreferences()) {
+                    preference.setEnabled(enabled);
+                }
+            }
+        });
+    }
+
     private void startAudioCall(SdpSessionDescription sd) {
         String peerMediaAddress = sd.getPeerMediaAddress();
         int peerMediaPort = sd.getPeerMediaPort();
         Log.i(TAG, "start audiocall " + peerMediaAddress + ":" + peerMediaPort);
 
-        // TODO
+        setAllPreferencesEnabled(false);
+
+        int localPort = getLocalMediaPort();
+        int sampleRate = 8000;
+        int frameSize = sampleRate / 50; // 160
+        try {
+            // TODO: get sample rate from sdp
+            mAudio = new AudioStream(sampleRate, sampleRate, localPort,
+                    peerMediaAddress, peerMediaPort);
+            mAudio.start();
+        } catch (Exception e) {
+            Log.e(TAG, "call(): " + e);
+        }
+        Log.v(TAG, " ~~~~~~~~~~~   start media: localPort=" + localPort
+                + ", peer=" + peerMediaAddress + ":" + peerMediaPort);
     }
 
     private void stopAudioCall() {
         Log.i(TAG, "stop audiocall");
-
-        // TODO
+        if (mAudio != null) mAudio.stop();
+        setAllPreferencesEnabled(true);
     }
 
     private Preference[] allPreferences() {
@@ -427,22 +446,12 @@ public class SipMain extends PreferenceActivity
         return getText(mPeerUri);
     }
 
-    private String getPeerMediaAddress() {
-        // TODO: from peer SDP
-        return createPeerSipProfile().getServerAddress();
-    }
-
     private String getServerUri() {
         return getText(mServerUri);
     }
 
     private int getLocalMediaPort() {
         return Integer.parseInt(getText(mLocalMediaPort));
-    }
-
-    private int getPeerMediaPort() {
-        // TODO: from peer SDP
-        return getLocalMediaPort();
     }
 
     private String getLocalIp() {
@@ -452,7 +461,7 @@ public class SipMain extends PreferenceActivity
             return s.getLocalAddress().getHostAddress();
         } catch (IOException e) {
             Log.w(TAG, "getLocalIp(): " + e);
-			return "127.0.0.1";
+            return "127.0.0.1";
         }
     }
 
