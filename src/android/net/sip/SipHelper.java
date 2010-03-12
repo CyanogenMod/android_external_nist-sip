@@ -351,8 +351,10 @@ class SipHelper {
     }
 
     public void sendBye(Dialog dialog) throws SipException {
-        dialog.incrementLocalSequenceNumber();
+        // SipStack increases seq number automatically
+        // so no need to call dialog.incrementLocalSequenceNumber().
         Request byeRequest = dialog.createRequest(Request.BYE);
+        Log.v(TAG, "send BYE: " + byeRequest);
         dialog.sendRequest(mSipProvider.getNewClientTransaction(byeRequest));
     }
 

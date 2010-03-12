@@ -18,6 +18,8 @@ package com.android.sip;
 
 import com.android.sip.media.AudioStream;
 
+import android.content.Context;
+import android.media.AudioManager;
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipProfile;
@@ -380,6 +382,18 @@ public class SipMain extends PreferenceActivity
         });
     }
 
+    private void setInCallMode() {
+        AudioManager am =
+                (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        am.setMode(AudioManager.MODE_IN_CALL);
+    }
+
+    private void setSpeakerMode() {
+        AudioManager am =
+                (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        am.setMode(AudioManager.MODE_NORMAL);
+    }
+
     private void startAudioCall(SdpSessionDescription sd) {
         String peerMediaAddress = sd.getPeerMediaAddress();
         int peerMediaPort = sd.getPeerMediaPort();
@@ -395,6 +409,7 @@ public class SipMain extends PreferenceActivity
             mAudio = new AudioStream(sampleRate, sampleRate, localPort,
                     peerMediaAddress, peerMediaPort);
             mAudio.start();
+            setInCallMode();
         } catch (Exception e) {
             Log.e(TAG, "call(): " + e);
         }
@@ -404,6 +419,7 @@ public class SipMain extends PreferenceActivity
 
     private void stopAudioCall() {
         Log.i(TAG, "stop audiocall");
+        setSpeakerMode();
         if (mAudio != null) mAudio.stop();
         setAllPreferencesEnabled(true);
     }

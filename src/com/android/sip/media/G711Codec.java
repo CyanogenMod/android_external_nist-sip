@@ -29,37 +29,41 @@ public class G711Codec implements Encoder, Decoder {
     // s01wxyzabcde...s110wxyz
     // s1wxyzabcdef...s111wxyz
 
-    private static int b8to16(int b8) {
-        int shift = ((b8 & 0x70) >> 4) - 1;
-        int b12 = b8 & 0xF;
-        if (shift >= 0) b12 = (b12 + 0x10) << shift;
-        return b12 << 4;
-    }
-
-    private static int b12to8(int b12) {
-        int shift = 0;
-        for (int tmp = b12 / 32; tmp > 0; tmp/=2) shift++;
-        int b8 = ((b12 >> shift) & 0xF);
-        if (b12 >= 16) b8 += ((shift + 1) << 4);
-
-        // invert even bits
-        return (b8 ^ 0x55);
-    }
-
     private static byte[] table12to8 = new byte[4096];
     private static short[] table8to16 = new short[256];
 
     static {
-        for (int i = 0; i < 2048; i++) {
-            int v = b12to8(i);
-            table12to8[i] = (byte) v;
-            table12to8[4095 - i] = (byte) (v + 128);
+        // b12 --> b8
+        for (int m = 0; m < 16; m++) {
+            int v = m ^ 0x55;
+            table12to8[m] = (byte) v;
+            table12to8[4095 - m] = (byte) (v + 128);
+        }
+        for (int p = 1, q = 0x10; p <= 0x40; p <<= 1, q+=0x10) {
+            for (int i = 0, j = (p << 4); i < 16; i++, j += p) {
+                int v = (i + q) ^ 0x55;
+                byte value1 = (byte) v;
+                byte value2 = (byte) (v + 128);
+                for (int m = j, e = j + p; m < e; m++) {
+                    table12to8[m] = value1;
+                    table12to8[4095 - m] = value2;
+                }
+            }
         }
 
-        for (int i = 0; i < 128; i++) {
-            int v = b8to16(i);
-            table8to16[i ^ 0x55] = (short) v;
-            table8to16[(i + 128) ^ 0x55] = (short) ((65536 - v) & 0xFFFF);
+        // b8 --> b16
+        for (int m = 0; m < 16; m++) {
+            int v = m << 4;
+            table8to16[m ^ 0x55] = (short) v;
+            table8to16[(m + 128) ^ 0x55] = (short) (65536 - v);
+        }
+        for (int p = 1, q = 0x10; p <= 0x40; p <<= 1, q+=0x10) {
+            int k = p << 4;
+            for (int i = 0, m = q, j = 0; i < 16; i++, m++, j+=p) {
+                int v = (j + k) << 4;
+                table8to16[m ^ 0x55] = (short) v;
+                table8to16[(m + 128) ^ 0x55] = (short) (65536 - v);
+            }
         }
     }
 

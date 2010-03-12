@@ -143,7 +143,14 @@ public class AudioStream {
             int writeHead = player.getPlaybackHeadPosition();
 
             // skip the first byte
-            receiver.receive();
+            try {
+                receiver.receive();
+            } catch (IOException e) {
+                Log.e(TAG, "receive error; stop player", e);
+                player.stop();
+                player.release();
+                return;
+            }
             cycleStart = System.currentTimeMillis();
             seqNo = receiver.getSequenceNumber();
 
@@ -158,67 +165,63 @@ public class AudioStream {
             float delta = 0f;
 
             while (mRunning) {
-                int count = receiver.receive();
-                if (count > 0) {
-                    try {
-                        int decodeCount = decoder.decode(
-                                playBuffer, buffer, count, offset);
-                        if (playState == AudioTrack.PLAYSTATE_STOPPED) {
-                            player.play();
-                            playState = player.getPlayState();
-                        }
-
-                        receiveCount ++;
-                        int sn = receiver.getSequenceNumber();
-                        int lossCount = sn - seqNo - 1;
-                        if (lossCount > 0) {
-                            packetLossCount += lossCount;
-                            virtualClock += lossCount * cyclePeriod;
-                        }
-                        virtualClock += cyclePeriod;
-                        long now = System.currentTimeMillis();
-                        long late = now - virtualClock;
-                        if (late < 0) {
-                            Log.d(TAG, "  move vc back: " + late);
-                            virtualClock = now;
-                        }
-
-                        delta = delta * 0.96f + late * 0.04f;
-                        late -= (long) delta;
-
-                        if (late  > 100) {
-                            // drop
-                            bytesDropped += decodeCount;
-                            Log.d(TAG, " drop " + decodeCount + ", late: "
-                                    + late + ", d=" + delta);
-                            cycleStart = now;
-                            seqNo = sn;
-                            continue;
-                        }
-                        int playHead = player.getPlaybackHeadPosition();
-                        int buffered = writeHead - playHead;
-                        if (buffered > bufferHighMark) {
-                            player.flush();
-                            buffered = 0;
-                            writeHead = player.getPlaybackHeadPosition();
-                            Log.d(TAG, " ~~~ flush: " + writeHead);
-                        }
-
-                        time = System.currentTimeMillis();
-                        writeHead +=
-                                player.write(playBuffer, 0, decodeCount);
-                        thisCycle = time - cycleStart;
-
-                        accumulatedExcessDelay = late;
-                        accumulatedBytes = late * bytesPerMillis;
-
-                        cycleStart = time;
-                        seqNo = sn;
-                    } catch (IOException e) {
-                        Log.w(TAG, " ~~~ xxx ~~~    decode error: " + e);
+                try {
+                    int count = receiver.receive();
+                    int decodeCount = decoder.decode(
+                            playBuffer, buffer, count, offset);
+                    if (playState == AudioTrack.PLAYSTATE_STOPPED) {
+                        player.play();
+                        playState = player.getPlayState();
                     }
-                } else {
-                    Log.w(TAG, "network disconnected; playback stopped");
+
+                    receiveCount ++;
+                    int sn = receiver.getSequenceNumber();
+                    int lossCount = sn - seqNo - 1;
+                    if (lossCount > 0) {
+                        packetLossCount += lossCount;
+                        virtualClock += lossCount * cyclePeriod;
+                    }
+                    virtualClock += cyclePeriod;
+                    long now = System.currentTimeMillis();
+                    long late = now - virtualClock;
+                    if (late < 0) {
+                        Log.d(TAG, "  move vc back: " + late);
+                        virtualClock = now;
+                    }
+
+                    delta = delta * 0.96f + late * 0.04f;
+                    late -= (long) delta;
+
+                    if (late  > 100) {
+                        // drop
+                        bytesDropped += decodeCount;
+                        Log.d(TAG, " drop " + decodeCount + ", late: "
+                                + late + ", d=" + delta);
+                        cycleStart = now;
+                        seqNo = sn;
+                        continue;
+                    }
+                    int playHead = player.getPlaybackHeadPosition();
+                    int buffered = writeHead - playHead;
+                    if (buffered > bufferHighMark) {
+                        player.flush();
+                        buffered = 0;
+                        writeHead = player.getPlaybackHeadPosition();
+                        Log.d(TAG, " ~~~ flush: " + writeHead);
+                    }
+
+                    time = System.currentTimeMillis();
+                    writeHead +=
+                            player.write(playBuffer, 0, decodeCount);
+                    thisCycle = time - cycleStart;
+
+                    accumulatedExcessDelay = late;
+                    accumulatedBytes = late * bytesPerMillis;
+
+                    cycleStart = time;
+                    seqNo = sn;
+                } catch (IOException e) {
+                    Log.w(TAG, "network disconnected; playback stopped", e);
                     player.stop();
                     playState = player.getPlayState();
                 }
@@ -230,6 +233,7 @@ public class AudioStream {
             Log.d(TAG, "     bytes dropped =" + bytesDropped);
             Log.d(TAG, "stop sound playing...");
             player.stop();
+            player.flush();
             player.release();
         }
     }
@@ -280,7 +284,12 @@ public class AudioStream {
 
                 int encodeCount =
                         encoder.encode(recordBuffer, count, buffer, offset);
-                sender.send(encodeCount);
+                try {
+                    sender.send(encodeCount);
+                } catch (IOException e) {
+                    Log.e(TAG, "send error, stop sending", e);
+                    break;
+                }
                 sendCount ++;
             }
             long now = System.currentTimeMillis();
@@ -312,15 +321,9 @@ public class AudioStream {
         }
 
         // return received payload size
-        int receive() {
+        int receive() throws IOException {
             DatagramPacket datagram = mDatagram;
-
-            try {
-                mSocket.receive(datagram);
-            } catch (IOException e) {
-                return 0;
-            }
-
+            mSocket.receive(datagram);
             return datagram.getLength() - 12;
         }
 
@@ -345,7 +348,7 @@ public class AudioStream {
             super(size);
         }
 
-        void send(int count) {
+        void send(int count) throws IOException {
             mTimeStamp += count;
             RtpPacket packet = mPacket;
             packet.setSequenceNumber(mSequence++);
@@ -354,11 +357,7 @@ public class AudioStream {
 
             DatagramPacket datagram = mDatagram;
             datagram.setLength(packet.getPacketLength());
-            try {
-                mSocket.send(datagram);
-            } catch (IOException e) {
-                Log.w("RtpSender", "running..." + e);
-            }
+            mSocket.send(datagram);
         }
     }
 

@@ -633,15 +633,20 @@ public class SipSessionLayer implements SipListener {
             if (expectResponse(Response.OK, Request.CANCEL, evt)) {
                 // do nothing; wait for REQUEST_TERMINATED
                 return true;
-            } else if (expectResponse(Response.REQUEST_TERMINATED,
-                    Request.INVITE, evt)) {
-                endCall(false);
-                return true;
-            } else if (expectResponse(Response.SERVER_INTERNAL_ERROR,
-                    Request.INVITE, evt)) {
-                Response response = ((ResponseEvent) evt).getResponse();
-                endCallOnError(false, createCallbackException(response));
-                return true;
+            } else if (expectResponse(Request.INVITE, evt)) {
+                ResponseEvent event = (ResponseEvent) evt;
+                Response response = event.getResponse();
+
+                int statusCode = response.getStatusCode();
+                switch (statusCode) {
+                case Response.REQUEST_TERMINATED:
+                    endCall(false);
+                    return true;
+                case Response.REQUEST_TIMEOUT:
+                case Response.SERVER_INTERNAL_ERROR:
+                    endCallOnError(true, createCallbackException(response));
+                    return true;
+                }
             }
             return false;
         }
