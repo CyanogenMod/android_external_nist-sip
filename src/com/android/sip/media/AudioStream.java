@@ -34,6 +34,8 @@ import android.util.Log;
 
 public class AudioStream {
     private static final String TAG = AudioStream.class.getSimpleName();
+    private static final int MAX_ALLOWABLE_LATENCY = 500; // ms
+    private static short[] sNoiseBuffer = null;
 
     private boolean mRunning = false;
     private RecordTask mRecordTask;
@@ -42,19 +44,21 @@ public class AudioStream {
     private DatagramSocket mSocket;
     private InetAddress mRemoteAddr;
     private int mRemotePort;
-    private int mLocalPort;
 
     public AudioStream(int localSampleRate, int remoteSampleRate,
-            int localPort) {
-        mLocalPort = localPort;
+            DatagramSocket socket) {
+        mSocket = socket;
         int localFrameSize = localSampleRate / 50; // 50 frames / sec
         mRecordTask = new RecordTask(localSampleRate, localFrameSize);
         mPlayTask = new PlayTask(remoteSampleRate, localFrameSize);
     }
 
-    public AudioStream(int localSampleRate, int remoteSampleRate, int localPort,
-            String remoteIp, int remotePort) throws UnknownHostException {
-        this(localSampleRate, remoteSampleRate, localPort);
+    public AudioStream(int localSampleRate, int remoteSampleRate,
+            DatagramSocket socket, String remoteIp, int remotePort)
+            throws UnknownHostException {
+        this(localSampleRate, remoteSampleRate, socket);
+        Log.v(TAG, "create AudioStream: to connect to " + remoteIp + ":"
+                + remotePort);
         mRemoteAddr = TextUtils.isEmpty(remoteIp)
                 ? null
                 : InetAddress.getByName(remoteIp);
@@ -64,10 +68,9 @@ public class AudioStream {
     public void start() throws SocketException {
         if (mRunning) return;
 
-        mSocket = new DatagramSocket(mLocalPort);
-
         mRunning = true;
-        Log.v(TAG, "start AudioStream: remoteAddr=" + mRemoteAddr);
+        Log.v(TAG, "start AudioStream: connect to " + mRemoteAddr + ":"
+                + mRemotePort);
         if (mRemoteAddr != null) {
             mRecordTask.start(mRemoteAddr, mRemotePort);
         }
@@ -76,7 +79,7 @@ public class AudioStream {
 
     public void stop() {
         mRunning = false;
-        mSocket.close();
+        if (mSocket != null) mSocket.close();
         // TODO: wait until both threads are stopped
     }
 
@@ -190,13 +193,16 @@ public class AudioStream {
                     }
 
                     delta = delta * 0.96f + late * 0.04f;
+                    if (delta > MAX_ALLOWABLE_LATENCY) {
+                        delta = MAX_ALLOWABLE_LATENCY;
+                    }
                     late -= (long) delta;
 
                     if (late  > 100) {
                         // drop
                         bytesDropped += decodeCount;
-                        Log.d(TAG, " drop " + decodeCount + ", late: "
-                                + late + ", d=" + delta);
+                        Log.d(TAG, " drop " + decodeCount + ", late: " + late
+                                + ", d=" + delta);
                         cycleStart = now;
                         seqNo = sn;
                         continue;
@@ -361,9 +367,27 @@ public class AudioStream {
         }
     }
 
+    private static void makeNoise() {
+        int len = 160;
+        if (sNoiseBuffer == null) {
+            sNoiseBuffer = new short[len];
+            for (int i = 0; i < len; i++) {
+                sNoiseBuffer[i] = (short) (Math.random() * 16);
+            }
+        } else {
+            for (int i = 0; i < 40; i++) {
+                int j = (int) (Math.random() * len);
+                int k = (int) (Math.random() * len);
+                short tmp = sNoiseBuffer[j];
+                sNoiseBuffer[j] = sNoiseBuffer[k];
+                sNoiseBuffer[k] = tmp;
+            }
+        }
+    }
+
     // Use another thread to play back to avoid playback blocks network
     // receiving thread
-    private class AudioPlayer implements
+    private class AudioPlayer implements Runnable,
             AudioTrack.OnPlaybackPositionUpdateListener {
         private short[] mBuffer;
         private int mStartMarker;
@@ -401,10 +425,6 @@ public class AudioStream {
             }
             mEndMarker += count;
 
-            if (!mNotificationStarted) {
-                writeToTrack();
-            }
-
             return count;
         }
 
@@ -424,6 +444,9 @@ public class AudioStream {
                 mIsPlaying = true;
                 mTrack.play();
                 mOffset = mTrack.getPlaybackHeadPosition();
+
+                // start initial noise feed, to kick off periodic notification
+                new Thread(this).start();
             }
         }
 
@@ -431,11 +454,24 @@ public class AudioStream {
             mTrack.stop();
             mTrack.setPlaybackPositionUpdateListener(null);
             mIsPlaying = false;
-            Log.d(TAG, "mIsPlaying set false");
         }
 
         synchronized void release() {
             mTrack.release();
+        }
+
+        public synchronized void run() {
+            Log.d(TAG, "start initial noise feed");
+            while (!mNotificationStarted && mIsPlaying) {
+                feedNoise();
+                try {
+                    this.wait(20);
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "initial noise feed error: " + e);
+                    break;
+                }
+            }
+            Log.d(TAG, "stop initial noise feed");
         }
 
         int getPlaybackHeadPosition() {
@@ -470,18 +506,19 @@ public class AudioStream {
             }
         }
 
+        private void feedNoise() {
+            makeNoise();
+            mTrack.write(sNoiseBuffer, 0, sNoiseBuffer.length);
+            mOffset += sNoiseBuffer.length;
+        }
+
         private synchronized void writeToTrack() {
             int bufferSize = mBuffer.length;
             int start = mStartMarker % bufferSize;
             int end = mEndMarker % bufferSize;
             if (end == start) {
                 int head = mTrack.getPlaybackHeadPosition() - mOffset;
-                if (mStartMarker == head) {
-                    // feed noise; keep mTrack busy
-                    // TODO: create real noise
-                    mTrack.write(mBuffer, 0, mFrameSize);
-                    mOffset += mFrameSize;
-                }
+                if (mStartMarker == head) feedNoise();
                 return;
             }
 

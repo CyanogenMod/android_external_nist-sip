@@ -18,6 +18,8 @@ package android.net.sip;
 
 import android.util.Log;
 
+import java.io.IOException;
+import java.net.DatagramSocket;
 import java.text.ParseException;
 import java.util.EventObject;
 import java.util.HashMap;
@@ -74,11 +76,15 @@ public class SipSessionLayer implements SipListener {
     private Map<String, SipSessionImpl> mSessionMap =
             new HashMap<String, SipSessionImpl>();
 
-    public void open(String myIp) {
-        open(myIp, ListeningPoint.PORT_5060, "Android SIP Stack");
+    public void open(String myIp) throws SipException {
+        open(myIp, allocateLocalPort(), "Android SIP Stack");
     }
 
-    public void open(String myIp, int port, String stackName) {
+    private void open(String myIp, int port, String stackName)
+            throws SipException {
+        if (mSipHelper != null) {
+            throw new SipException("Call close() before open it again");
+        }
         SipFactory sipFactory = SipFactory.getInstance();
         Properties properties = new Properties();
         properties.setProperty("javax.sip.STACK_NAME", stackName);
@@ -96,6 +102,17 @@ public class SipSessionLayer implements SipListener {
             Log.e(TAG, "", e);
         } catch (SipException e) {
             Log.e(TAG, "", e);
+        }
+    }
+
+    private int allocateLocalPort() throws SipException {
+        try {
+            DatagramSocket s = new DatagramSocket();
+            int localPort = s.getLocalPort();
+            s.close();
+            return localPort;
+        } catch (IOException e) {
+            throw new SipException("allocateLocalPort()", e);
         }
     }
 

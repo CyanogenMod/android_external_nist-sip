@@ -60,7 +60,6 @@ public class SipMain extends PreferenceActivity
     private EditTextPreference mServerUri;
     private EditTextPreference mPassword;
     private EditTextPreference mDisplayName;
-    private EditTextPreference mLocalMediaPort;
     private Preference mMyIp;
 
     private SipProfile mLocalProfile;
@@ -68,6 +67,7 @@ public class SipMain extends PreferenceActivity
     private SipSession mSipSession;
     private SipSession mSipCallSession;
     private AudioStream mAudio;
+    private DatagramSocket mMediaSocket;
     private boolean mHolding = false;
 
     @Override
@@ -81,7 +81,6 @@ public class SipMain extends PreferenceActivity
         mPassword = (EditTextPreference)
                 getPreferenceScreen().findPreference("password");
         mDisplayName = setupEditTextPreference("display_name");
-        mLocalMediaPort = setupEditTextPreference("local_media_port");
         mMyIp = getPreferenceScreen().findPreference("my_ip");
 
         mMyIp.setSummary(getLocalIp());
@@ -126,6 +125,7 @@ public class SipMain extends PreferenceActivity
             mSipSessionLayer = null;
             mSipSession = null;
         }
+        stopAudioCall();
     }
 
     public boolean onPreferenceChange(Preference pref, Object newValue) {
@@ -262,7 +262,7 @@ public class SipMain extends PreferenceActivity
         }
     }
 
-    private void setupSipStack() {
+    private void setupSipStack() throws SipException {
         if (mSipSession == null) {
             mSipSessionLayer = new SipSessionLayer();
             mSipSessionLayer.open(getLocalIp());
@@ -318,7 +318,7 @@ public class SipMain extends PreferenceActivity
     private void answerOrEndCall() {
         SipSession session = getActiveSession();
         try {
-            if (Math.random() > 0.2) {
+            if (Math.random() > 0) {
                 session.answerCall(getSdpSampleBuilder().build());
             } else {
                 session.endCall();
@@ -396,6 +396,7 @@ public class SipMain extends PreferenceActivity
 
     private void startAudioCall(SdpSessionDescription sd) {
         String peerMediaAddress = sd.getPeerMediaAddress();
+        // TODO: handle multiple media fields
         int peerMediaPort = sd.getPeerMediaPort();
         Log.i(TAG, "start audiocall " + peerMediaAddress + ":" + peerMediaPort);
 
@@ -406,12 +407,12 @@ public class SipMain extends PreferenceActivity
         int frameSize = sampleRate / 50; // 160
         try {
             // TODO: get sample rate from sdp
-            mAudio = new AudioStream(sampleRate, sampleRate, localPort,
+            mAudio = new AudioStream(sampleRate, sampleRate, mMediaSocket,
                     peerMediaAddress, peerMediaPort);
             mAudio.start();
             setInCallMode();
         } catch (Exception e) {
-            Log.e(TAG, "call(): " + e);
+            Log.e(TAG, "call()", e);
         }
         Log.v(TAG, " ~~~~~~~~~~~   start media: localPort=" + localPort
                 + ", peer=" + peerMediaAddress + ":" + peerMediaPort);
@@ -420,14 +421,16 @@ public class SipMain extends PreferenceActivity
     private void stopAudioCall() {
         Log.i(TAG, "stop audiocall");
         setSpeakerMode();
-        if (mAudio != null) mAudio.stop();
+        if (mAudio != null) {
+            mAudio.stop();
+            mMediaSocket = null;
+        }
         setAllPreferencesEnabled(true);
     }
 
     private Preference[] allPreferences() {
         return new Preference[] {
-            mCallStatus, mPeerUri, mServerUri, mPassword, mDisplayName,
-            mLocalMediaPort, mMyIp
+            mCallStatus, mPeerUri, mServerUri, mPassword, mDisplayName, mMyIp
         };
     }
 
@@ -467,7 +470,15 @@ public class SipMain extends PreferenceActivity
     }
 
     private int getLocalMediaPort() {
-        return Integer.parseInt(getText(mLocalMediaPort));
+        if (mMediaSocket != null) return mMediaSocket.getLocalPort();
+        try {
+            DatagramSocket s = mMediaSocket = new DatagramSocket();
+            int localPort = s.getLocalPort();
+            return localPort;
+        } catch (IOException e) {
+            Log.w(TAG, "getLocalMediaPort(): " + e);
+            throw new RuntimeException(e);
+        }
     }
 
     private String getLocalIp() {
