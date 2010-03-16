@@ -145,9 +145,10 @@ public class AudioStream {
             player.flush();
             int writeHead = player.getPlaybackHeadPosition();
 
-            // skip the first byte
+            // start measurement after first packet arrival
             try {
                 receiver.receive();
+                Log.d(TAG, "received first packet");
             } catch (IOException e) {
                 Log.e(TAG, "receive error; stop player", e);
                 player.stop();
@@ -310,7 +311,7 @@ public class AudioStream {
                 try {
                     sender.send(encodeCount);
                 } catch (IOException e) {
-                    Log.e(TAG, "send error, stop sending", e);
+                    if (mRunning) Log.e(TAG, "send error, stop sending", e);
                     break;
                 }
                 sendCount ++;
@@ -479,8 +480,10 @@ public class AudioStream {
 
         public synchronized void run() {
             Log.d(TAG, "start initial noise feed");
+            int count = 0;
             while (!mNotificationStarted && mIsPlaying) {
                 feedNoise();
+                count++;
                 try {
                     this.wait(20);
                 } catch (InterruptedException e) {
@@ -488,7 +491,7 @@ public class AudioStream {
                     break;
                 }
             }
-            Log.d(TAG, "stop initial noise feed");
+            Log.d(TAG, "stop initial noise feed: " + count);
         }
 
         int getPlaybackHeadPosition() {

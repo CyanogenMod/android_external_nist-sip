@@ -547,7 +547,7 @@ public class SipSessionLayer implements SipListener {
                 mPeerProfile = createPeerProfile(event.getRequest());
                 mState = SipSessionState.INCOMING_CALL;
                 mPeerSessionDescription = event.getRequest().getRawContent();
-                mListener.onRinging(SipSessionImpl.this,
+                mListener.onRinging(SipSessionImpl.this, mPeerProfile,
                         mPeerSessionDescription);
                 return true;
             } else if (REGISTER == evt) {
@@ -614,8 +614,10 @@ public class SipSessionLayer implements SipListener {
                 int statusCode = response.getStatusCode();
                 switch (statusCode) {
                 case Response.RINGING:
-                    mState = SipSessionState.OUTGOING_CALL_RING_BACK;
-                    mListener.onRingingBack(this);
+                    if (mState == SipSessionState.OUTGOING_CALL) {
+                        mState = SipSessionState.OUTGOING_CALL_RING_BACK;
+                        mListener.onRingingBack(this);
+                    }
                     return true;
                 case Response.OK:
                     mSipHelper.sendInviteAck(event, mDialog);

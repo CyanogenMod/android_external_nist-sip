@@ -17,7 +17,8 @@
 package android.net.sip;
 
 public interface SipSessionListener {
-    void onRinging(SipSession session, byte[] sessionDescription);
+    void onRinging(SipSession session, SipProfile caller,
+            byte[] sessionDescription);
     void onRingingBack(SipSession session);
     void onCallEstablished(SipSession session, byte[] sessionDescription);
     void onCallEnded(SipSession session);

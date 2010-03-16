@@ -18,7 +18,10 @@ package com.android.sip;
 
 import com.android.sip.media.AudioStream;
 
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.media.AudioManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -77,6 +80,7 @@ public class SipMain extends PreferenceActivity
     private RingbackTonePlayer mRingbackTonePlayer;
     private DatagramSocket mMediaSocket;
     private boolean mHolding = false;
+    private MyDialog mDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -177,6 +181,15 @@ public class SipMain extends PreferenceActivity
         });
     }
 
+    private void showCallNotificationDialog(SipProfile caller) {
+        mDialog = new CallNotificationDialog(caller);
+        runOnUiThread(new Runnable() {
+            public void run() {
+                showDialog(mDialog.getId());
+            }
+        });
+    }
+
     private SipSession getActiveSession() {
         return ((mSipCallSession == null) ? mSipSession
                                           : mSipCallSession);
@@ -227,6 +240,7 @@ public class SipMain extends PreferenceActivity
         public void stopTone() {
             synchronized (this) {
                 if (mState == TONE_ON) {
+                    Log.d(TAG, "notify to stop RingbackTonePlayer");
                     notify();
                 }
                 mState = TONE_STOPPED;
@@ -236,10 +250,10 @@ public class SipMain extends PreferenceActivity
 
     private SipSessionListener createSipSessionListener() {
         return new SipSessionListener() {
-
-            public void onRinging(
-                    SipSession session, byte[] sessionDescription) {
+            public void onRinging(SipSession session, SipProfile caller,
+                    byte[] sessionDescription) {
                 startRinging();
+                showCallNotificationDialog(caller);
                 try {
                     SdpSessionDescription sd =
                             new SdpSessionDescription(sessionDescription);
@@ -384,17 +398,19 @@ public class SipMain extends PreferenceActivity
         }
     }
 
-    private void answerOrEndCall() {
-        SipSession session = getActiveSession();
+    private void answerCall() {
         try {
-            if (Math.random() > 0) {
-                session.answerCall(getSdpSampleBuilder().build());
-            } else {
-                session.endCall();
-            }
+            getActiveSession().answerCall(getSdpSampleBuilder().build());
         } catch (SipException e) {
             // TODO: UI feedback
-            Log.e(TAG, "answerOrEndCall()", e);
+            Log.e(TAG, "answerCall()", e);
+        }
+    }
+    private void answerOrEndCall() {
+        if (Math.random() > 0) {
+            answerCall();
+        } else {
+            endCall();
         }
     }
 
@@ -451,19 +467,16 @@ public class SipMain extends PreferenceActivity
         });
     }
 
-    private void stopRinging() {
-        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        v.cancel();
-        if (mRingtone != null) mRingtone.stop();
-    }
-
     private void startRingbackPlayer() {
         mRingbackTonePlayer = new RingbackTonePlayer();
         mRingbackTonePlayer.start();
     }
 
     private void stopRingbackPlayer() {
-        mRingbackTonePlayer.stopTone();
+        if (mRingbackTonePlayer != null) {
+            mRingbackTonePlayer.stopTone();
+            mRingbackTonePlayer = null;
+        }
     }
 
     private void startRinging() {
@@ -476,6 +489,12 @@ public class SipMain extends PreferenceActivity
             mRingtone = RingtoneManager.getRingtone(this, Uri.parse(sRingtone));
             mRingtone.play();
         }
+    }
+
+    private void stopRinging() {
+        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        v.cancel();
+        if (mRingtone != null) mRingtone.stop();
     }
 
     private void setInCallMode() {
@@ -669,5 +688,73 @@ public class SipMain extends PreferenceActivity
             break;
         }
         setCallStatus();
+    }
+
+    @Override
+    protected Dialog onCreateDialog (int id) {
+        return ((mDialog == null) ? null : mDialog.createDialog(id));
+    }
+
+    @Override
+    protected void onPrepareDialog (int id, Dialog dialog) {
+        if (mDialog != null) mDialog.prepareDialog(id, dialog);
+    }
+
+    private class CallNotificationDialog implements MyDialog {
+        private SipProfile mCaller;
+
+        CallNotificationDialog(SipProfile caller) {
+            mCaller = caller;
+        }
+
+        public int getId() {
+            return 0;
+        }
+
+        private String getCallerName() {
+            String name = mCaller.getDisplayName();
+            if (TextUtils.isEmpty(name)) name = mCaller.getUri().toString();
+            return name;
+        }
+
+        public Dialog createDialog(int id) {
+            if (id != getId()) return null;
+            Log.d(TAG, "create call notification dialog");
+            return new AlertDialog.Builder(SipMain.this)
+                    .setTitle(getCallerName())
+                    .setIcon(android.R.drawable.ic_dialog_alert)
+                    .setPositiveButton("Answer",
+                            new DialogInterface.OnClickListener() {
+                                public void onClick(DialogInterface dialog, int w) {
+                                    answerCall();
+                                    stopRinging();
+                                }
+                            })
+                    .setNegativeButton("Hang up",
+                            new DialogInterface.OnClickListener() {
+                                public void onClick(DialogInterface dialog, int w) {
+                                    endCall();
+                                    stopRinging();
+                                }
+                            })
+                    .setOnCancelListener(new DialogInterface.OnCancelListener() {
+                                public void onCancel(DialogInterface dialog) {
+                                    endCall();
+                                    stopRinging();
+                                }
+                            })
+                    .create();
+        }
+
+        public void prepareDialog(int id, Dialog dialog) {
+            if (id != getId()) return;
+            dialog.setTitle(getCallerName());
+        }
+    }
+
+    private interface MyDialog {
+        int getId();
+        Dialog createDialog(int id);
+        void prepareDialog(int id, Dialog dialog);
     }
 }
