@@ -73,8 +73,9 @@ public class G711Codec implements Encoder, Decoder {
         }
         return count;
     }
-    
+
     public int encode(short[] b16, int count, byte[] b8, int offset) {
+
         for (int i = 0, j = offset; i < count; i++, j++) {
             b8[j] = table12to8[(b16[i] & 0xffff) >> 4];
         }

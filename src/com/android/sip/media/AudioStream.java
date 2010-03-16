@@ -259,6 +259,20 @@ public class AudioStream {
             new Thread(this).start();
         }
 
+        void adjustMicGain(short[] buf, int len, int factor) {
+            int i,j;
+            for (i = 0; i < len; i++) {
+                j = buf[i];
+                if (j > 32768/factor) {
+                    buf[i] = 32767;
+                } else if (j < -(32768/factor)) {
+                    buf[i] = -32767;
+                } else {
+                    buf[i] = (short)(factor*j);
+                }
+            }
+        }
+
         public void run() {
             Encoder encoder = new G711Codec();
             int recordBufferSize = encoder.getSampleCount(mFrameSize);
@@ -287,6 +301,9 @@ public class AudioStream {
 
             while (mRunning) {
                 int count = recorder.read(recordBuffer, 0, recordBufferSize);
+
+                // TODO: remove the mic gain if the issue is fixed on Passion.
+                adjustMicGain(recordBuffer, count, 32);
 
                 int encodeCount =
                         encoder.encode(recordBuffer, count, buffer, offset);

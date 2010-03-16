@@ -20,18 +20,23 @@ import com.android.sip.media.AudioStream;
 
 import android.content.Context;
 import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipProfile;
 import android.net.sip.SipSession;
 import android.net.sip.SipSessionLayer;
 import android.net.sip.SipSessionListener;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Vibrator;
 import android.preference.EditTextPreference;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
 import android.preference.Preference.OnPreferenceClickListener;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.Menu;
@@ -67,6 +72,7 @@ public class SipMain extends PreferenceActivity
     private SipSession mSipSession;
     private SipSession mSipCallSession;
     private AudioStream mAudio;
+    private Ringtone mRingtone;
     private DatagramSocket mMediaSocket;
     private boolean mHolding = false;
 
@@ -186,6 +192,7 @@ public class SipMain extends PreferenceActivity
                     Log.e(TAG, "createSessionDescription()", e);
                 }
                 setCallStatus();
+                startRinging();
             }
 
             public void onRingingBack(SipSession session) {
@@ -200,6 +207,7 @@ public class SipMain extends PreferenceActivity
                             new SdpSessionDescription(sessionDescription);
                     Log.v(TAG, "sip call established: " + session + ": " + sd);
                     startAudioCall(sd);
+                    stopRinging();
                 } catch (SdpException e) {
                     Log.e(TAG, "createSessionDescription()", e);
                 }
@@ -213,6 +221,7 @@ public class SipMain extends PreferenceActivity
                 mSipCallSession = null;
                 mHolding = false;
                 setCallStatus();
+                stopRinging();
             }
 
             public void onCallBusy(SipSession session) {
@@ -232,6 +241,7 @@ public class SipMain extends PreferenceActivity
                 Log.v(TAG, "sip session error: " + e);
                 mHolding = false;
                 setCallStatus();
+                stopRinging();
             }
 
             public void onRegistrationDone(SipSession session) {
@@ -380,6 +390,24 @@ public class SipMain extends PreferenceActivity
                 }
             }
         });
+    }
+
+    private void stopRinging() {
+        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        v.cancel();
+        if (mRingtone != null) mRingtone.stop();
+    }
+
+    private void startRinging() {
+        long[] vibratePattern = {0,1000,1000};
+        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        v.vibrate(vibratePattern,1);
+        AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (am.getStreamVolume(AudioManager.STREAM_RING) > 0) {
+            String sRingtone = Settings.System.DEFAULT_RINGTONE_URI.toString();
+            mRingtone = RingtoneManager.getRingtone(this, Uri.parse(sRingtone));
+            mRingtone.play();
+        }
     }
 
     private void setInCallMode() {
