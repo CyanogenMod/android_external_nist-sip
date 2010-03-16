@@ -22,6 +22,7 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
+import android.media.ToneGenerator;
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipProfile;
@@ -73,6 +74,7 @@ public class SipMain extends PreferenceActivity
     private SipSession mSipCallSession;
     private AudioStream mAudio;
     private Ringtone mRingtone;
+    private RingbackTonePlayer mRingbackTonePlayer;
     private DatagramSocket mMediaSocket;
     private boolean mHolding = false;
 
@@ -179,11 +181,65 @@ public class SipMain extends PreferenceActivity
         return ((mSipCallSession == null) ? mSipSession
                                           : mSipCallSession);
     }
+    private class RingbackTonePlayer extends Thread {
+        // The tone state
+        private static final int TONE_OFF = 0;
+        private static final int TONE_ON = 1;
+        private static final int TONE_STOPPED = 2;
+        private static final int TONE_TIMEOUT_BUFFER = 20;
+
+        // The tone volume relative to other sounds in the stream
+        private static final int TONE_RELATIVE_VOLUME_HIPRI = 80;
+        private static final int TONE_RELATIVE_VOLUME_LOPRI = 50;
+
+        private int mState = TONE_OFF;
+
+        @Override
+        public void run() {
+            int toneType = ToneGenerator.TONE_SUP_RINGTONE;
+            int toneVolume = TONE_RELATIVE_VOLUME_HIPRI;
+             // Call ring back tone is stopped by stopTone() method
+            int toneLengthMillis = Integer.MAX_VALUE - TONE_TIMEOUT_BUFFER;
+            ToneGenerator toneGenerator;
+            try {
+                toneGenerator = new ToneGenerator(
+                        AudioManager.STREAM_MUSIC, toneVolume);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Exception caught while creating ToneGenerator: " + e);
+                toneGenerator = null;
+            }
+            synchronized (this) {
+                if (mState != TONE_STOPPED) {
+                    mState = TONE_ON;
+                    toneGenerator.startTone(toneType);
+                    try {
+                        wait(toneLengthMillis + TONE_TIMEOUT_BUFFER);
+                    } catch  (InterruptedException e) {
+                        Log.w(TAG, "RingbackTonePlayer stopped: " + e);
+                    }
+                    toneGenerator.stopTone();
+                }
+                toneGenerator.release();
+                mState = TONE_OFF;
+            }
+        }
+
+        public void stopTone() {
+            synchronized (this) {
+                if (mState == TONE_ON) {
+                    notify();
+                }
+                mState = TONE_STOPPED;
+            }
+        }
+    }
 
     private SipSessionListener createSipSessionListener() {
         return new SipSessionListener() {
+
             public void onRinging(
                     SipSession session, byte[] sessionDescription) {
+                startRinging();
                 try {
                     SdpSessionDescription sd =
                             new SdpSessionDescription(sessionDescription);
@@ -192,11 +248,11 @@ public class SipMain extends PreferenceActivity
                     Log.e(TAG, "createSessionDescription()", e);
                 }
                 setCallStatus();
-                startRinging();
             }
 
             public void onRingingBack(SipSession session) {
                 Log.v(TAG, "sip call ringing back: " + session);
+                startRingbackPlayer();
                 setCallStatus();
             }
 
@@ -206,6 +262,7 @@ public class SipMain extends PreferenceActivity
                     SdpSessionDescription sd =
                             new SdpSessionDescription(sessionDescription);
                     Log.v(TAG, "sip call established: " + session + ": " + sd);
+                    stopRingbackPlayer();
                     startAudioCall(sd);
                     stopRinging();
                 } catch (SdpException e) {
@@ -217,6 +274,7 @@ public class SipMain extends PreferenceActivity
 
             public void onCallEnded(SipSession session) {
                 Log.v(TAG, "sip call ended: " + session);
+                stopRingbackPlayer();
                 stopAudioCall();
                 mSipCallSession = null;
                 mHolding = false;
@@ -241,6 +299,7 @@ public class SipMain extends PreferenceActivity
                 Log.v(TAG, "sip session error: " + e);
                 mHolding = false;
                 setCallStatus();
+                stopRingbackPlayer();
                 stopRinging();
             }
 
@@ -398,10 +457,19 @@ public class SipMain extends PreferenceActivity
         if (mRingtone != null) mRingtone.stop();
     }
 
+    private void startRingbackPlayer() {
+        mRingbackTonePlayer = new RingbackTonePlayer();
+        mRingbackTonePlayer.start();
+    }
+
+    private void stopRingbackPlayer() {
+        mRingbackTonePlayer.stopTone();
+    }
+
     private void startRinging() {
-        long[] vibratePattern = {0,1000,1000};
+        long[] vibratePattern = {0, 1000, 1000};
         Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        v.vibrate(vibratePattern,1);
+        v.vibrate(vibratePattern, 1);
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         if (am.getStreamVolume(AudioManager.STREAM_RING) > 0) {
             String sRingtone = Settings.System.DEFAULT_RINGTONE_URI.toString();
