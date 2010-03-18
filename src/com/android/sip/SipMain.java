@@ -62,6 +62,7 @@ public class SipMain extends PreferenceActivity
     private static final int MENU_REGISTER = Menu.FIRST;
     private static final int MENU_CALL = Menu.FIRST + 1;
     private static final int MENU_HANGUP = Menu.FIRST + 2;
+    private static final int MENU_SEND_DTMF_1 = Menu.FIRST + 3;
 
     private Preference mCallStatus;
     private EditTextPreference mPeerUri;
@@ -434,7 +435,8 @@ public class SipMain extends PreferenceActivity
                     .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4, localIp)
                     .addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP", 8)
                     .addMediaAttribute("rtpmap", "8 PCMA/8000")
-                    .addMediaAttribute("ptime", "20");
+                    .addMediaAttribute("ptime", "20")
+                    .addMediaAttribute("fmtp", "101 0-15");
         } catch (SdpException e) {
             throw new RuntimeException(e);
         }
@@ -533,11 +535,11 @@ public class SipMain extends PreferenceActivity
 
     private void stopAudioCall() {
         Log.i(TAG, "stop audiocall");
-        setSpeakerMode();
         if (mAudio != null) {
             mAudio.stop();
             mMediaSocket = null;
         }
+        setSpeakerMode();
         setAllPreferencesEnabled(true);
     }
 
@@ -553,6 +555,7 @@ public class SipMain extends PreferenceActivity
         menu.add(0, MENU_REGISTER, 0, R.string.menu_register);
         menu.add(0, MENU_CALL, 0, R.string.menu_call);
         menu.add(0, MENU_HANGUP, 0, R.string.menu_hangup);
+        menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
         return true;
     }
 
@@ -569,6 +572,14 @@ public class SipMain extends PreferenceActivity
 
             case MENU_HANGUP:
                 endCall();
+                return true;
+
+            case MENU_SEND_DTMF_1:
+                SipSession activeSession = getActiveSession();
+                switch (activeSession.getState()) {
+                    case IN_CALL:
+                        mAudio.sendDTMF();
+                }
                 return true;
         }
         return super.onOptionsItemSelected(item);

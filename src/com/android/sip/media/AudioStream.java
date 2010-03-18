@@ -44,6 +44,7 @@ public class AudioStream {
     private DatagramSocket mSocket;
     private InetAddress mRemoteAddr;
     private int mRemotePort;
+    private boolean mSendDTMF = false;
 
     public AudioStream(int localSampleRate, int remoteSampleRate,
             DatagramSocket socket) {
@@ -81,6 +82,10 @@ public class AudioStream {
         mRunning = false;
         if (mSocket != null) mSocket.close();
         // TODO: wait until both threads are stopped
+    }
+
+    public void sendDTMF() {
+        mSendDTMF = true;
     }
 
     private void startRecordTask(InetAddress remoteAddr, int remotePort) {
@@ -310,10 +315,17 @@ public class AudioStream {
                         encoder.encode(recordBuffer, count, buffer, offset);
                 try {
                     sender.send(encodeCount);
+                    if (mSendDTMF) {
+                        recorder.stop();
+                        sender.sendDtmf();
+                        mSendDTMF = false;
+                        recorder.startRecording();
+                    }
                 } catch (IOException e) {
                     if (mRunning) Log.e(TAG, "send error, stop sending", e);
                     break;
                 }
+
                 sendCount ++;
             }
             long now = System.currentTimeMillis();
@@ -372,10 +384,47 @@ public class AudioStream {
             super(size);
         }
 
+        void sendDtmf() throws IOException {
+            byte[] buffer = getBuffer();
+
+            RtpPacket packet = mPacket;
+            packet.setPayloadType(101);
+            packet.setPayloadLength(4);
+
+            mTimeStamp += 160;
+            packet.setTimestamp(mTimeStamp);
+            DatagramPacket datagram = mDatagram;
+            datagram.setLength(packet.getPacketLength());
+            int duration = 480;
+            buffer[12] = 1;
+            buffer[13] = 0;
+            buffer[14] = (byte)(duration >> 8);
+            buffer[15] = (byte)duration;
+            for (int i = 0; i < 3; i++) {
+                packet.setSequenceNumber(mSequence++);
+                mSocket.send(datagram);
+                try {
+                    Thread.sleep(20);
+                } catch (Exception e) {
+                }
+            }
+            mTimeStamp += 480;
+            packet.setTimestamp(mTimeStamp);
+            buffer[12] = 1;
+            buffer[13] = (byte)0x80;
+            buffer[14] = (byte)(duration >> 8);
+            buffer[15] = (byte)duration;
+            for (int i = 0; i < 3; i++) {
+                packet.setSequenceNumber(mSequence++);
+                mSocket.send(datagram);
+            }
+        }
+
         void send(int count) throws IOException {
             mTimeStamp += count;
             RtpPacket packet = mPacket;
             packet.setSequenceNumber(mSequence++);
+            packet.setPayloadType(8);
             packet.setTimestamp(mTimeStamp);
             packet.setPayloadLength(count);
 

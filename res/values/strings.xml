@@ -29,6 +29,7 @@
     <string name="menu_register">Register</string>
     <string name="menu_call">Call</string>
     <string name="menu_hangup">Hang up</string>
+    <string name="menu_send_dtmf">Send DTMF_1</string>
     <string name="field_not_set">%s is not set.</string>
     <string name="field_not_set_optional">%s is not set. (optional)</string>
 
