@@ -17,7 +17,7 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Sip Joy</string>
 
-    <string name="dev_pref_title">SIP test (build 106)</string>
+    <string name="dev_pref_title">SIP test (build 107)</string>
     <string name="peer_title">Who to call?</string>
     <string name="peer_summary">test@192.168.147.113:5060</string>
     <string name="server_address_title">Server address</string>

@@ -50,7 +50,6 @@ import gov.nist.javax.sdp.fields.SDPKeywords;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
 import java.text.ParseException;
 import javax.sdp.SdpException;
 import javax.sip.SipException;
@@ -86,6 +85,13 @@ public class SipMain extends PreferenceActivity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         addPreferencesFromResource(R.xml.dev_pref);
+
+        try {
+            setupSipStack();
+        } catch (SipException e) {
+            Log.e(TAG, "register()", e);
+            return;
+        }
 
         mCallStatus = getPreferenceScreen().findPreference("call_status");
         mPeerUri = setupEditTextPreference("peer");
@@ -138,6 +144,8 @@ public class SipMain extends PreferenceActivity
             mSipSession = null;
         }
         stopAudioCall();
+        stopRingbackPlayer();
+        stopRinging();
     }
 
     public boolean onPreferenceChange(Preference pref, Object newValue) {
@@ -334,28 +342,18 @@ public class SipMain extends PreferenceActivity
         };
     }
 
-    private SipSession createSipSession() {
-        try {
-            return mSipSessionLayer.createSipSession(createLocalSipProfile(),
-                    createSipSessionListener());
-        } catch (SipException e) {
-            // TODO: toast
-            Log.e(TAG, "createSipSession()", e);
-            return null;
-        }
-    }
-
     private void setupSipStack() throws SipException {
-        if (mSipSession == null) {
+        if (mSipSessionLayer == null) {
             mSipSessionLayer = new SipSessionLayer();
-            mSipSessionLayer.open(getLocalIp());
-            mSipSession = createSipSession();
         }
     }
 
     private void register() {
         try {
-            setupSipStack();
+            if (mSipSession == null) {
+                mSipSession = mSipSessionLayer.createSipSession(
+                        createLocalSipProfile(), createSipSessionListener());
+            }
             mSipSession.register();
             setCallStatus();
         } catch (SipException e) {
@@ -597,14 +595,7 @@ public class SipMain extends PreferenceActivity
     }
 
     private String getLocalIp() {
-        try {
-            DatagramSocket s = new DatagramSocket();
-            s.connect(InetAddress.getByName("www.google.com"), 80);
-            return s.getLocalAddress().getHostAddress();
-        } catch (IOException e) {
-            Log.w(TAG, "getLocalIp(): " + e);
-            return "127.0.0.1";
-        }
+        return mSipSessionLayer.getLocalIp();
     }
 
     private void setValue(EditTextPreference pref, String value) {

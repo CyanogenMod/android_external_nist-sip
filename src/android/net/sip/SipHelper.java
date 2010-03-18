@@ -86,10 +86,6 @@ class SipHelper {
         mMessageFactory = sipFactory.createMessageFactory();
     }
 
-    public SipStack getSipStack() {
-        return mSipStack;
-    }
-
     private FromHeader createFromHeader(SipProfile profile, String tag)
             throws ParseException {
         return mHeaderFactory.createFromHeader(profile.getSipAddress(), tag);
