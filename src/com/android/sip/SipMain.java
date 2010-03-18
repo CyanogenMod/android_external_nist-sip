@@ -433,10 +433,10 @@ public class SipMain extends PreferenceActivity
                             (long)Math.random() * 10000000L, SDPKeywords.IN,
                             SDPKeywords.IPV4, localIp)
                     .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4, localIp)
-                    .addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP", 8)
+                    .addMedia("audio", getLocalMediaPort(), 2, "RTP/AVP", 8, 101)
                     .addMediaAttribute("rtpmap", "8 PCMA/8000")
-                    .addMediaAttribute("ptime", "20")
-                    .addMediaAttribute("fmtp", "101 0-15");
+                    .addMediaAttribute("rtpmap", "101 telephone-event/8000")
+                    .addMediaAttribute("ptime", "20");
         } catch (SdpException e) {
             throw new RuntimeException(e);
         }
