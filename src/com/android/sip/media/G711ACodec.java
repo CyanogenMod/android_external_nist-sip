@@ -19,7 +19,7 @@ package com.android.sip.media;
 /**
  * G.711 codec. This class provides a-law conversion.
  */
-public class G711Codec implements Encoder, Decoder {
+public class G711ACodec implements Encoder, Decoder {
     // s0000000wxyz...s000wxyz
     // s0000001wxyz...s001wxyz
     // s000001wxyza...s010wxyz
@@ -57,10 +57,9 @@ public class G711Codec implements Encoder, Decoder {
             table8to16[m ^ 0x55] = (short) v;
             table8to16[(m + 128) ^ 0x55] = (short) (65536 - v);
         }
-        for (int p = 1, q = 0x10; p <= 0x40; p <<= 1, q+=0x10) {
-            int k = p << 4;
-            for (int i = 0, m = q, j = 0; i < 16; i++, m++, j+=p) {
-                int v = (j + k) << 4;
+        for (int q = 1; q <= 7; q++) {
+            for (int i = 0, m = (q << 4); i < 16; i++, m++) {
+                int v = (i + 0x10) << (q + 3);
                 table8to16[m ^ 0x55] = (short) v;
                 table8to16[(m + 128) ^ 0x55] = (short) (65536 - v);
             }

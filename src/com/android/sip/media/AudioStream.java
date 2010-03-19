@@ -110,7 +110,7 @@ public class AudioStream {
         }
 
         public void run() {
-            Decoder decoder = new G711Codec();
+            Decoder decoder = new G711ACodec();
             int playBufferSize = decoder.getSampleCount(mFrameSize);
             short[] playBuffer = new short[playBufferSize];
 
@@ -280,7 +280,7 @@ public class AudioStream {
         }
 
         public void run() {
-            Encoder encoder = new G711Codec();
+            Encoder encoder = new G711ACodec();
             int recordBufferSize = encoder.getSampleCount(mFrameSize);
             short[] recordBuffer = new short[recordBufferSize];
             RtpSender sender = new RtpSender(mFrameSize);
