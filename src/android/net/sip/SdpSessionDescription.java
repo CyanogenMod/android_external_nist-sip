@@ -27,7 +27,9 @@ import gov.nist.javax.sdp.fields.TimeField;
 import gov.nist.javax.sdp.parser.SDPAnnounceParser;
 
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Vector;
 import javax.sdp.Connection;
 import javax.sdp.MediaDescription;
@@ -171,10 +173,25 @@ public class SdpSessionDescription implements SessionDescription {
         return mPeerMediaPort;
     }
 
+    public List<Integer> getMediaFormats() {
+        MediaDescription md = getMediaDescription();
+        Vector<String> formatVector = (md == null)
+                ? null
+                : md.getMedia().getFormats();
+        if (formatVector == null) formatVector = new Vector<String>();
+        List<Integer> formats = new ArrayList<Integer>();
+        for (String id : formatVector) {
+            try {
+                formats.add(Integer.parseInt(id));
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+        }
+        return formats;
+    }
+
     private void init() throws SdpException {
-        Vector vector = mSessionDescription.getMediaDescriptions(false);
-        // FIXME
-        MediaDescription md = (MediaDescription) vector.firstElement();
+        MediaDescription md = getMediaDescription();
         mPeerMediaPort = md.getMedia().getMediaPort();
 
         Connection connection = md.getConnection();
@@ -182,6 +199,17 @@ public class SdpSessionDescription implements SessionDescription {
             connection = mSessionDescription.getConnection();
         }
         mPeerMediaAddress = connection.getAddress();
+    }
+
+    private MediaDescription getMediaDescription() {
+        try {
+            Vector vector = mSessionDescription.getMediaDescriptions(false);
+            // FIXME: how to handle multiple media descriptions
+            return (MediaDescription) vector.firstElement();
+        } catch (SdpException e) {
+            android.util.Log.e("SdpSessionDescription", e.toString());
+            return null;
+        }
     }
 
     public String getType() {

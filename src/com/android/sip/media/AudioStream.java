@@ -45,8 +45,9 @@ public class AudioStream {
     private InetAddress mRemoteAddr;
     private int mRemotePort;
     private boolean mSendDTMF = false;
+    private int mCodecId;
 
-    public AudioStream(int localSampleRate, int remoteSampleRate,
+    private AudioStream(int localSampleRate, int remoteSampleRate,
             DatagramSocket socket) {
         mSocket = socket;
         int localFrameSize = localSampleRate / 50; // 50 frames / sec
@@ -55,15 +56,16 @@ public class AudioStream {
     }
 
     public AudioStream(int localSampleRate, int remoteSampleRate,
-            DatagramSocket socket, String remoteIp, int remotePort)
+            DatagramSocket socket, String remoteIp, int remotePort, int codecId)
             throws UnknownHostException {
         this(localSampleRate, remoteSampleRate, socket);
         Log.v(TAG, "create AudioStream: to connect to " + remoteIp + ":"
-                + remotePort);
+                + remotePort + " using codec " + codecId);
         mRemoteAddr = TextUtils.isEmpty(remoteIp)
                 ? null
                 : InetAddress.getByName(remoteIp);
         mRemotePort = remotePort;
+        mCodecId = codecId;
     }
     
     public void start() throws SocketException {
@@ -110,7 +112,7 @@ public class AudioStream {
         }
 
         public void run() {
-            Decoder decoder = new G711ACodec();
+            Decoder decoder = CodecFactory.createDecoder(mCodecId);
             int playBufferSize = decoder.getSampleCount(mFrameSize);
             short[] playBuffer = new short[playBufferSize];
 
@@ -280,7 +282,7 @@ public class AudioStream {
         }
 
         public void run() {
-            Encoder encoder = new G711ACodec();
+            Encoder encoder = CodecFactory.createEncoder(mCodecId);
             int recordBufferSize = encoder.getSampleCount(mFrameSize);
             short[] recordBuffer = new short[recordBufferSize];
             RtpSender sender = new RtpSender(mFrameSize);
@@ -344,7 +346,7 @@ public class AudioStream {
         RtpReceiver(int size) {
             byte[] buffer = new byte[size + 12];
             mPacket = new RtpPacket(buffer);
-            mPacket.setPayloadType(8);
+            mPacket.setPayloadType(mCodeId);
             mDatagram = new DatagramPacket(buffer, buffer.length);
         }
 
@@ -424,7 +426,7 @@ public class AudioStream {
             mTimeStamp += count;
             RtpPacket packet = mPacket;
             packet.setSequenceNumber(mSequence++);
-            packet.setPayloadType(8);
+            packet.setPayloadType(mCodeId);
             packet.setTimestamp(mTimeStamp);
             packet.setPayloadLength(count);
 

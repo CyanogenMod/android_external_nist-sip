@@ -51,6 +51,10 @@ import gov.nist.javax.sdp.fields.SDPKeywords;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.text.ParseException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import javax.sdp.SdpException;
 import javax.sip.SipException;
 
@@ -75,6 +79,8 @@ public class SipMain extends PreferenceActivity
     private SipSessionLayer mSipSessionLayer;
     private SipSession mSipSession;
     private SipSession mSipCallSession;
+    private SdpSessionDescription mOfferSd;
+
     private AudioStream mAudio;
     private Ringtone mRingtone;
     private RingbackTonePlayer mRingbackTonePlayer;
@@ -264,7 +270,7 @@ public class SipMain extends PreferenceActivity
                 startRinging();
                 showCallNotificationDialog(caller);
                 try {
-                    SdpSessionDescription sd =
+                    SdpSessionDescription sd = mOfferSd =
                             new SdpSessionDescription(sessionDescription);
                     Log.v(TAG, "sip call ringing: " + session + ": " + sd);
                 } catch (SdpException e) {
@@ -398,6 +404,7 @@ public class SipMain extends PreferenceActivity
     }
 
     private void answerCall() {
+        // TODO: choose an acceptable media from mOfferSd to answer
         try {
             getActiveSession().answerCall(getSdpSampleBuilder().build());
         } catch (SipException e) {
@@ -433,7 +440,8 @@ public class SipMain extends PreferenceActivity
                             (long)Math.random() * 10000000L, SDPKeywords.IN,
                             SDPKeywords.IPV4, localIp)
                     .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4, localIp)
-                    .addMedia("audio", getLocalMediaPort(), 2, "RTP/AVP", 8, 101)
+                    .addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP", 0, 8, 101)
+                    .addMediaAttribute("rtpmap", "0 PCMU/8000")
                     .addMediaAttribute("rtpmap", "8 PCMA/8000")
                     .addMediaAttribute("rtpmap", "101 telephone-event/8000")
                     .addMediaAttribute("ptime", "20");
@@ -509,6 +517,16 @@ public class SipMain extends PreferenceActivity
         am.setMode(AudioManager.MODE_NORMAL);
     }
 
+    private int getCodecId(SdpSessionDescription sd) {
+        // FIXME: hardcoded ID's
+        Set<Integer> acceptableFormats = new HashSet(Arrays.asList(0, 8));
+        for (int id : sd.getMediaFormats()) {
+            if (acceptableFormats.contains(id)) return id;
+        }
+        Log.w(TAG, "no common codec is found, use 0");
+        return 0;
+    }
+
     private void startAudioCall(SdpSessionDescription sd) {
         String peerMediaAddress = sd.getPeerMediaAddress();
         // TODO: handle multiple media fields
@@ -523,7 +541,7 @@ public class SipMain extends PreferenceActivity
         try {
             // TODO: get sample rate from sdp
             mAudio = new AudioStream(sampleRate, sampleRate, mMediaSocket,
-                    peerMediaAddress, peerMediaPort);
+                    peerMediaAddress, peerMediaPort, getCodecId(sd));
             mAudio.start();
             setInCallMode();
         } catch (Exception e) {
