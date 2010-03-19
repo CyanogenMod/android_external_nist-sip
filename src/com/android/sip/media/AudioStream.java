@@ -346,7 +346,7 @@ public class AudioStream {
         RtpReceiver(int size) {
             byte[] buffer = new byte[size + 12];
             mPacket = new RtpPacket(buffer);
-            mPacket.setPayloadType(mCodeId);
+            mPacket.setPayloadType(mCodecId);
             mDatagram = new DatagramPacket(buffer, buffer.length);
         }
 
@@ -426,7 +426,7 @@ public class AudioStream {
             mTimeStamp += count;
             RtpPacket packet = mPacket;
             packet.setSequenceNumber(mSequence++);
-            packet.setPayloadType(mCodeId);
+            packet.setPayloadType(mCodecId);
             packet.setTimestamp(mTimeStamp);
             packet.setPayloadLength(count);
 
