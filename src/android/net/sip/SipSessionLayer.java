@@ -23,13 +23,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 
-import javax.sip.ListeningPoint;
 import javax.sip.SipException;
-import javax.sip.SipFactory;
-import javax.sip.SipProvider;
-import javax.sip.SipStack;
 
 /**
  * @hide
@@ -37,27 +32,17 @@ import javax.sip.SipStack;
  */
 public class SipSessionLayer {
     private static final String TAG = SipSessionLayer.class.getSimpleName();
-    private static final String STACK_NAME = "A SIP STACK";
 
-    private SipStack mSipStack;
     private String mMyIp;
     private Map<String, SipSessionGroup> mGroupMap =
             new HashMap<String, SipSessionGroup>();
 
     public SipSessionLayer() throws SipException {
-        if (mSipStack != null) {
-            throw new SipException("Call close() before open it again");
-        }
         try {
             mMyIp = getMyIp();
         } catch (IOException e) {
             throw new SipException("SipSessionLayer constructor", e);
         }
-        SipFactory sipFactory = SipFactory.getInstance();
-        Properties properties = new Properties();
-        properties.setProperty("javax.sip.STACK_NAME", STACK_NAME);
-        SipStack stack = mSipStack = sipFactory.createSipStack(properties);
-        stack.start();
     }
 
     public String getLocalIp() {
@@ -72,44 +57,25 @@ public class SipSessionLayer {
 
     private String getMyIp() throws IOException {
             DatagramSocket s = new DatagramSocket();
-            s.connect(InetAddress.getByName("www.google.com"), 80);
+            s.connect(InetAddress.getByName("192.168.1.1"), 80);
             return s.getLocalAddress().getHostAddress();
     }
 
-    private static int allocateLocalPort() throws SipException {
-        try {
-            DatagramSocket s = new DatagramSocket();
-            int localPort = s.getLocalPort();
-            s.close();
-            return localPort;
-        } catch (IOException e) {
-            throw new SipException("allocateLocalPort()", e);
-        }
-    }
-
     public synchronized void close() {
-        if (mSipStack != null) {
-            mSipStack.stop();
-            mSipStack = null;
+        for (String key : mGroupMap.keySet()) {
+            mGroupMap.get(key).close();
         }
-        // remove all the groups
+        mGroupMap.clear();
     }
-
-    private synchronized SipSessionGroup createGroup(SipProfile myself,
-            SipSessionListener listener) throws SipException {
-        SipSessionGroup group = mGroupMap.get(myself.getUri().toString());
-        if (group != null) return group;
-
-        SipStack stack = mSipStack;
-        SipProvider provider = stack.createSipProvider(
-                stack.createListeningPoint(mMyIp, allocateLocalPort(),
-                        ListeningPoint.UDP));
-        return new SipSessionGroup(stack, provider, myself, listener);
-    }
-
 
     public synchronized SipSession createSipSession(SipProfile myself,
             SipSessionListener listener) throws SipException {
-        return createGroup(myself, listener).getDefaultSession();
+        String key = myself.getUri().toString();
+        SipSessionGroup group = mGroupMap.get(key);
+        if (group == null) {
+            group = new SipSessionGroup(mMyIp, myself, listener);
+            mGroupMap.put(key, group);
+        }
+        return group.getDefaultSession();
     }
 }

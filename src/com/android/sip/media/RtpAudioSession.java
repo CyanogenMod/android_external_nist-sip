@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 
 import android.media.AudioFormat;
@@ -29,13 +28,12 @@ import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Process;
-import android.text.TextUtils;
 import android.util.Log;
 
-public class AudioStream {
-    private static final String TAG = AudioStream.class.getSimpleName();
+class RtpAudioSession implements RtpSession {
+    private static final String TAG = RtpAudioSession.class.getSimpleName();
+    private static final int AUDIO_SAMPLE_RATE = 8000;
     private static final int MAX_ALLOWABLE_LATENCY = 500; // ms
-    private static short[] sNoiseBuffer = null;
 
     private boolean mRunning = false;
     private RecordTask mRecordTask;
@@ -44,35 +42,48 @@ public class AudioStream {
     private DatagramSocket mSocket;
     private InetAddress mRemoteAddr;
     private int mRemotePort;
-    private boolean mSendDTMF = false;
+    private boolean mSendDtmf = false;
     private int mCodecId;
 
-    private AudioStream(int localSampleRate, int remoteSampleRate,
-            DatagramSocket socket) {
-        mSocket = socket;
-        int localFrameSize = localSampleRate / 50; // 50 frames / sec
-        mRecordTask = new RecordTask(localSampleRate, localFrameSize);
-        mPlayTask = new PlayTask(remoteSampleRate, localFrameSize);
-    }
+    private NoiseGenerator mNoiseGenerator = new NoiseGenerator();
 
-    public AudioStream(int localSampleRate, int remoteSampleRate,
-            DatagramSocket socket, String remoteIp, int remotePort, int codecId)
-            throws UnknownHostException {
-        this(localSampleRate, remoteSampleRate, socket);
-        Log.v(TAG, "create AudioStream: to connect to " + remoteIp + ":"
-                + remotePort + " using codec " + codecId);
-        mRemoteAddr = TextUtils.isEmpty(remoteIp)
-                ? null
-                : InetAddress.getByName(remoteIp);
-        mRemotePort = remotePort;
+    RtpAudioSession(int codecId) {
         mCodecId = codecId;
     }
-    
-    public void start() throws SocketException {
+
+    private void init(int remoteSampleRate, DatagramSocket socket) {
+        mRemoteAddr = socket.getInetAddress();
+        mRemotePort = socket.getPort();
+        mSocket = socket;
+        int localFrameSize = AUDIO_SAMPLE_RATE / 50; // 50 frames / sec
+        mRecordTask = new RecordTask(AUDIO_SAMPLE_RATE, localFrameSize);
+        mPlayTask = new PlayTask(remoteSampleRate, localFrameSize);
+        Log.v(TAG, "create RtpSession: to connect to " + mRemoteAddr + ":"
+                + mRemotePort + " using codec " + mCodecId);
+    }
+
+    public int getCodecId() {
+        return mCodecId;
+    }
+
+    public int getSampleRate() {
+        return AUDIO_SAMPLE_RATE;
+    }
+
+    public String getName() {
+        switch (mCodecId) {
+        case 8: return "PCMA";
+        default: return "PCMU";
+        }
+    }
+
+    public void start(int remoteSampleRate, DatagramSocket connectedSocket)
+            throws IOException {
+        init(remoteSampleRate, connectedSocket);
         if (mRunning) return;
 
         mRunning = true;
-        Log.v(TAG, "start AudioStream: connect to " + mRemoteAddr + ":"
+        Log.v(TAG, "start RtpSession: connect to " + mRemoteAddr + ":"
                 + mRemotePort);
         if (mRemoteAddr != null) {
             mRecordTask.start(mRemoteAddr, mRemotePort);
@@ -80,14 +91,23 @@ public class AudioStream {
         mPlayTask.start();
     }
 
-    public void stop() {
+    public synchronized void stop() {
         mRunning = false;
-        if (mSocket != null) mSocket.close();
-        // TODO: wait until both threads are stopped
+        Log.v(TAG, "stop RtpSession: measured volume = "
+                + mNoiseGenerator.mMeasuredVolume);
+        // wait until player is stopped
+        for (int i = 20; (i > 0) && !mPlayTask.isStopped(); i--) {
+            Log.v(TAG, "    wait for player to stop...");
+            try {
+                wait(20);
+            } catch (InterruptedException e) {
+                // ignored
+            }
+        }
     }
 
-    public void sendDTMF() {
-        mSendDTMF = true;
+    public void sendDtmf() {
+        mSendDtmf = true;
     }
 
     private void startRecordTask(InetAddress remoteAddr, int remotePort) {
@@ -101,6 +121,7 @@ public class AudioStream {
     private class PlayTask implements Runnable {
         private int mSampleRate;
         private int mFrameSize;
+        private AudioPlayer mPlayer;
 
         PlayTask(int sampleRate, int frameSize) {
             mSampleRate = sampleRate;
@@ -111,8 +132,13 @@ public class AudioStream {
             new Thread(this).start();
         }
 
+        boolean isStopped() {
+            return (mPlayer == null)
+                    || (mPlayer.getPlayState() == AudioTrack.PLAYSTATE_STOPPED);
+        }
+
         public void run() {
-            Decoder decoder = CodecFactory.createDecoder(mCodecId);
+            Decoder decoder = RtpFactory.createDecoder(mCodecId);
             int playBufferSize = decoder.getSampleCount(mFrameSize);
             short[] playBuffer = new short[playBufferSize];
 
@@ -131,7 +157,7 @@ public class AudioStream {
                     mSampleRate, AudioFormat.CHANNEL_CONFIGURATION_MONO,
                     AudioFormat.ENCODING_PCM_16BIT, minBufferSize,
                     AudioTrack.MODE_STREAM);
-            AudioPlayer player =
+            AudioPlayer player = mPlayer =
                     new AudioPlayer(aplayer, minBufferSize, mFrameSize);
 
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
@@ -140,11 +166,7 @@ public class AudioStream {
             boolean socketConnected = mSocket.isConnected();
             long receiveCount = 0;
             long cyclePeriod = mFrameSize * 1000L / mSampleRate;
-            long accumulatedExcessDelay = 0;
-            long accumulatedBytes = 0;
-            long bytesPerMillis = mSampleRate / 1000L;
-            long cycleStart = 0, thisCycle;
-            long time;
+            long cycleStart = 0;
             int seqNo = 0;
             int packetLossCount = 0;
             int bytesDropped = 0;
@@ -180,6 +202,7 @@ public class AudioStream {
                     int count = receiver.receive();
                     int decodeCount = decoder.decode(
                             playBuffer, buffer, count, offset);
+                    mNoiseGenerator.measureVolume(playBuffer, 0, decodeCount);
                     if (playState == AudioTrack.PLAYSTATE_STOPPED) {
                         player.play();
                         playState = player.getPlayState();
@@ -195,10 +218,7 @@ public class AudioStream {
                     virtualClock += cyclePeriod;
                     long now = System.currentTimeMillis();
                     long late = now - virtualClock;
-                    if (late < 0) {
-                        Log.d(TAG, "  move vc back: " + late);
-                        virtualClock = now;
-                    }
+                    if (late < 0) virtualClock = now;
 
                     delta = delta * 0.96f + late * 0.04f;
                     if (delta > MAX_ALLOWABLE_LATENCY) {
@@ -209,30 +229,28 @@ public class AudioStream {
                     if (late  > 100) {
                         // drop
                         bytesDropped += decodeCount;
-                        Log.d(TAG, " drop " + decodeCount + ", late: " + late
-                                + ", d=" + delta);
+                        if (LogRateLimiter.allowLogging(now)) {
+                            Log.d(TAG, " drop " + sn + ":" + decodeCount
+                                    + ", late: " + late + ", d=" + delta);
+                        }
                         cycleStart = now;
                         seqNo = sn;
                         continue;
                     }
-                    int playHead = player.getPlaybackHeadPosition();
-                    int buffered = writeHead - playHead;
+                    int buffered = writeHead - player.getPlaybackHeadPosition();
                     if (buffered > bufferHighMark) {
                         player.flush();
                         buffered = 0;
                         writeHead = player.getPlaybackHeadPosition();
-                        Log.d(TAG, " ~~~ flush: " + writeHead);
+                        if (LogRateLimiter.allowLogging(now)) {
+                            Log.d(TAG, " ~~~ flush: set writeHead to "
+                                    + writeHead);
+                        }
                     }
 
-                    time = System.currentTimeMillis();
-                    writeHead +=
-                            player.write(playBuffer, 0, decodeCount);
-                    thisCycle = time - cycleStart;
+                    writeHead += player.write(playBuffer, 0, decodeCount);
 
-                    accumulatedExcessDelay = late;
-                    accumulatedBytes = late * bytesPerMillis;
-
-                    cycleStart = time;
+                    cycleStart = now;
                     seqNo = sn;
                 } catch (IOException e) {
                     Log.w(TAG, "network disconnected; playback stopped", e);
@@ -241,8 +259,6 @@ public class AudioStream {
                 }
             }
             Log.d(TAG, "     receiveCount = " + receiveCount);
-            Log.d(TAG, "     acc excess delay =" + accumulatedExcessDelay);
-            Log.d(TAG, "     acc bytes =" + accumulatedBytes);
             Log.d(TAG, "     # packets lost =" + packetLossCount);
             Log.d(TAG, "     bytes dropped =" + bytesDropped);
             Log.d(TAG, "stop sound playing...");
@@ -267,7 +283,7 @@ public class AudioStream {
             new Thread(this).start();
         }
 
-        void adjustMicGain(short[] buf, int len, int factor) {
+        private void adjustMicGain(short[] buf, int len, int factor) {
             int i,j;
             for (i = 0; i < len; i++) {
                 j = buf[i];
@@ -282,7 +298,7 @@ public class AudioStream {
         }
 
         public void run() {
-            Encoder encoder = CodecFactory.createEncoder(mCodecId);
+            Encoder encoder = RtpFactory.createEncoder(mCodecId);
             int recordBufferSize = encoder.getSampleCount(mFrameSize);
             short[] recordBuffer = new short[recordBufferSize];
             RtpSender sender = new RtpSender(mFrameSize);
@@ -317,10 +333,10 @@ public class AudioStream {
                         encoder.encode(recordBuffer, count, buffer, offset);
                 try {
                     sender.send(encodeCount);
-                    if (mSendDTMF) {
+                    if (mSendDtmf) {
                         recorder.stop();
                         sender.sendDtmf();
-                        mSendDTMF = false;
+                        mSendDtmf = false;
                         recorder.startRecording();
                     }
                 } catch (IOException e) {
@@ -436,21 +452,38 @@ public class AudioStream {
         }
     }
 
-    private static void makeNoise() {
-        int len = 160;
-        if (sNoiseBuffer == null) {
-            sNoiseBuffer = new short[len];
-            for (int i = 0; i < len; i++) {
-                sNoiseBuffer[i] = (short) (Math.random() * 16);
+    private class NoiseGenerator {
+        private static final int AMP = 1000;
+        private static final int TURN_DOWN_RATE = 80;
+        private static final int NOISE_LENGTH = 160;
+
+        private short[] mNoiseBuffer = new short[NOISE_LENGTH];
+        private int mMeasuredVolume = 0;
+
+        short[] makeNoise() {
+            final int len = NOISE_LENGTH;
+            short volume = (short) (mMeasuredVolume / TURN_DOWN_RATE / AMP);
+            double volume2 = volume * 2.0;
+            int m = 8;
+            for (int i = 0; i < len; i+=m) {
+                short v = (short) (Math.random() * volume2);
+                v -= volume;
+                for (int j = 0, k = i; (j < m) && (k < len); j++, k++) {
+                    mNoiseBuffer[k] = v;
+                }
             }
-        } else {
-            for (int i = 0; i < 40; i++) {
-                int j = (int) (Math.random() * len);
-                int k = (int) (Math.random() * len);
-                short tmp = sNoiseBuffer[j];
-                sNoiseBuffer[j] = sNoiseBuffer[k];
-                sNoiseBuffer[k] = tmp;
+            return mNoiseBuffer;
+        }
+
+        void measureVolume(short[] audioData, int offset, int count) {
+            for (int i = 0, j = offset; i < count; i++, j++) {
+                mMeasuredVolume = (mMeasuredVolume * 9
+                        + Math.abs((int) audioData[j]) * AMP) / 10;
             }
+        }
+
+        int getNoiseLength() {
+            return mNoiseBuffer.length;
         }
     }
 
@@ -520,9 +553,10 @@ public class AudioStream {
         }
 
         synchronized void stop() {
-            mTrack.stop();
-            mTrack.setPlaybackPositionUpdateListener(null);
             mIsPlaying = false;
+            mTrack.stop();
+            mTrack.flush();
+            mTrack.setPlaybackPositionUpdateListener(null);
         }
 
         synchronized void release() {
@@ -532,11 +566,12 @@ public class AudioStream {
         public synchronized void run() {
             Log.d(TAG, "start initial noise feed");
             int count = 0;
+            long waitTime = mNoiseGenerator.getNoiseLength() / 8; // ms
             while (!mNotificationStarted && mIsPlaying) {
                 feedNoise();
                 count++;
                 try {
-                    this.wait(20);
+                    this.wait(waitTime);
                 } catch (InterruptedException e) {
                     Log.e(TAG, "initial noise feed error: " + e);
                     break;
@@ -578,33 +613,44 @@ public class AudioStream {
         }
 
         private void feedNoise() {
-            makeNoise();
-            mTrack.write(sNoiseBuffer, 0, sNoiseBuffer.length);
-            mOffset += sNoiseBuffer.length;
+            short[] noiseBuffer = mNoiseGenerator.makeNoise();
+            mOffset += mTrack.write(noiseBuffer, 0, noiseBuffer.length);
         }
 
         private synchronized void writeToTrack() {
-            int bufferSize = mBuffer.length;
-            int start = mStartMarker % bufferSize;
-            int end = mEndMarker % bufferSize;
-            if (end == start) {
+            if (mStartMarker == mEndMarker) {
                 int head = mTrack.getPlaybackHeadPosition() - mOffset;
-                if (mStartMarker == head) feedNoise();
+                if ((mStartMarker - head) <= 320) feedNoise();
                 return;
             }
 
             int count = mFrameSize;
             if (count < getBufferedDataSize()) count = getBufferedDataSize();
 
+            int bufferSize = mBuffer.length;
+            int start = mStartMarker % bufferSize;
             if ((start + count) <= bufferSize) {
-                mTrack.write(mBuffer, start, count);
+                mStartMarker += mTrack.write(mBuffer, start, count);
             } else {
                 int partialSize = bufferSize - start;
-                mTrack.write(mBuffer, start, partialSize);
-                mTrack.write(mBuffer, 0, count - partialSize);
+                mStartMarker += mTrack.write(mBuffer, start, partialSize);
+                mStartMarker += mTrack.write(mBuffer, 0, count - partialSize);
             }
-            mStartMarker += count;
             notify();
+        }
+    }
+
+    private static class LogRateLimiter {
+        private static final long MIN_TIME = 1000;
+        private static long mLastTime;
+
+        private static boolean allowLogging(long now) {
+            if ((now - mLastTime) < MIN_TIME) {
+                return false;
+            } else {
+                mLastTime = now;
+                return true;
+            }
         }
     }
 }

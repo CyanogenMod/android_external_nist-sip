@@ -27,6 +27,6 @@ public interface SipSessionListener {
     void onError(SipSession session, Throwable e);
 
     void onRegistrationDone(SipSession session);
-    void onRegistrationFailed(SipSession session);
+    void onRegistrationFailed(SipSession session, Throwable e);
     void onRegistrationTimeout(SipSession session);
 }

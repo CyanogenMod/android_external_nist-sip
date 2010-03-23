@@ -18,10 +18,13 @@ package android.net.sip;
 
 import android.util.Log;
 
+import java.io.IOException;
+import java.net.DatagramSocket;
 import java.text.ParseException;
 import java.util.EventObject;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TooManyListenersException;
@@ -36,6 +39,7 @@ import javax.sip.RequestEvent;
 import javax.sip.ResponseEvent;
 import javax.sip.ServerTransaction;
 import javax.sip.SipException;
+import javax.sip.SipFactory;
 import javax.sip.SipListener;
 import javax.sip.SipProvider;
 import javax.sip.SipStack;
@@ -65,6 +69,9 @@ class SipSessionGroup implements SipListener {
     private static final EventObject CONTINUE_CALL
             = new EventObject("Continue call");
 
+    private static final String STACK_NAME = "A SIP STACK";
+
+    private SipStack mSipStack;
     private SipHelper mSipHelper;
     private SipProfile mLocalProfile;
 
@@ -76,8 +83,17 @@ class SipSessionGroup implements SipListener {
     private Map<String, SipSessionImpl> mSessionMap =
             new HashMap<String, SipSessionImpl>();
 
-    SipSessionGroup(SipStack stack, SipProvider provider, SipProfile myself,
+    SipSessionGroup(String localIp, SipProfile myself,
             SipSessionListener listener) throws SipException {
+        SipFactory sipFactory = SipFactory.getInstance();
+        Properties properties = new Properties();
+        properties.setProperty("javax.sip.STACK_NAME", STACK_NAME);
+        SipStack stack = mSipStack = sipFactory.createSipStack(properties);
+        stack.start();
+
+        SipProvider provider = stack.createSipProvider(
+                stack.createListeningPoint(localIp, allocateLocalPort(),
+                        ListeningPoint.UDP));
         try {
             provider.addSipListener(this);
         } catch (TooManyListenersException e) {
@@ -89,9 +105,28 @@ class SipSessionGroup implements SipListener {
         mDefaultSession = new SipSessionImpl(listener);
     }
 
+    public synchronized void close() {
+        if (mSipStack != null) {
+            mSipStack.stop();
+            mSipStack = null;
+        }
+    }
+
     SipSession getDefaultSession() {
         return mDefaultSession;
     }
+
+    private static int allocateLocalPort() throws SipException {
+        try {
+            DatagramSocket s = new DatagramSocket();
+            int localPort = s.getLocalPort();
+            s.close();
+            return localPort;
+        } catch (IOException e) {
+            throw new SipException("allocateLocalPort()", e);
+        }
+    }
+
 
     private synchronized SipSessionImpl getSipSession(EventObject event) {
         String[] keys = mSipHelper.getPossibleSessionKeys(event);
@@ -163,11 +198,16 @@ class SipSessionGroup implements SipListener {
     }
 
     private void process(EventObject event) {
+        SipSessionImpl session = getSipSession(event);
+        if (session == null) {
+            Log.w(TAG, "event not processed: " + event);
+            return;
+        }
         try {
-            getSipSession(event).process(event);
-        } catch (Exception e) {
-            // TODO: suppress stack trace after code gets stabilized
-            Log.e(TAG, "event not processed: " + event, e);
+            session.process(event);
+        } catch (Throwable e) {
+            Log.e(TAG, "event process error: " + event, e);
+            session.mListener.onError(session, e);
         }
     }
 
@@ -320,7 +360,7 @@ class SipSessionGroup implements SipListener {
                 processed = false;
             }
             if (!processed && !processExceptions(evt)) {
-                throw new SipException("event not processed");
+                Log.w(TAG, "event not processed: " + evt);
             } else {
                 Log.v(TAG, " ~~~~~   new state: " + mState);
             }
@@ -398,23 +438,34 @@ class SipSessionGroup implements SipListener {
 
         private boolean registeringToReady(EventObject evt)
                 throws SipException {
-            if (expectResponse(Response.OK, Request.REGISTER, evt)) {
-                if (mState == SipSessionState.REGISTERING) {
-                    scheduleNextRegistration((ExpiresHeader)
-                            ((ResponseEvent) evt).getResponse().getHeader(
-                                    ExpiresHeader.NAME));
+            if (expectResponse(Request.REGISTER, evt)) {
+                ResponseEvent event = (ResponseEvent) evt;
+                Response response = event.getResponse();
+
+                int statusCode = response.getStatusCode();
+                switch (statusCode) {
+                case Response.OK:
+                    if (mState == SipSessionState.REGISTERING) {
+                        scheduleNextRegistration((ExpiresHeader)
+                                ((ResponseEvent) evt).getResponse().getHeader(
+                                        ExpiresHeader.NAME));
+                    }
+                    reset();
+                    mListener.onRegistrationDone(this);
+                    return true;
+                case Response.UNAUTHORIZED:
+                case Response.PROXY_AUTHENTICATION_REQUIRED:
+                    mSipHelper.handleChallenge((ResponseEvent)evt, mLocalProfile);
+                    return true;
+                default:
+                    if (statusCode >= 500) {
+                        reset();
+                        mListener.onRegistrationFailed(this,
+                                createCallbackException(response));
+                        return true;
+                    }
                 }
-                reset();
-                mListener.onRegistrationDone(this);
-                return true;
             }
-            if (expectResponse(Response.UNAUTHORIZED, Request.REGISTER, evt)
-                    || expectResponse(Response.PROXY_AUTHENTICATION_REQUIRED,
-                            Request.REGISTER, evt)) {
-                mSipHelper.handleChallenge((ResponseEvent)evt, mLocalProfile);
-                return true;
-            }
-            //TODO: handle error conditions
             return false;
         }
 

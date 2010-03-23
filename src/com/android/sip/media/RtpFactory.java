@@ -16,7 +16,24 @@
 
 package com.android.sip.media;
 
-class CodecFactory {
+import android.util.Log;
+
+public class RtpFactory {
+    public static RtpSession[] getSystemSupportedAudioSessions() {
+        return new RtpSession[] {
+                new RtpAudioSession(0), new RtpAudioSession(8)};
+    }
+
+    // returns null if codecId is not supported by the system
+    public static RtpSession createAudioSession(int codecId) {
+        for (RtpSession s : getSystemSupportedAudioSessions()) {
+            if (s.getCodecId() == codecId) {
+                return new RtpAudioSession(codecId);
+            }
+        }
+        return null;
+    }
+
     static Encoder createEncoder(int id) {
         switch (id) {
         case 8:
