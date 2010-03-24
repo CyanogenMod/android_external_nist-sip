@@ -21,6 +21,7 @@ import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.net.sip.SipProfile;
+import android.net.sip.SipSessionState;
 import android.os.Bundle;
 import android.preference.EditTextPreference;
 import android.preference.Preference;
@@ -33,6 +34,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 
 import java.io.IOException;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.text.ParseException;
 import javax.sip.SipException;
 
@@ -41,9 +44,10 @@ import javax.sip.SipException;
 public class SipMain extends PreferenceActivity
         implements Preference.OnPreferenceChangeListener {
     private static final String TAG = SipMain.class.getSimpleName();
-    private static final int MENU_CALL = Menu.FIRST;
-    private static final int MENU_HANGUP = Menu.FIRST + 1;
-    private static final int MENU_SEND_DTMF_1 = Menu.FIRST + 2;
+    private static final int MENU_REGISTER = Menu.FIRST;
+    private static final int MENU_CALL = Menu.FIRST + 1;
+    private static final int MENU_HANGUP = Menu.FIRST + 2;
+    private static final int MENU_SEND_DTMF_1 = Menu.FIRST + 3;
 
     private Preference mCallStatus;
     private EditTextPreference mPeerUri;
@@ -58,6 +62,7 @@ public class SipMain extends PreferenceActivity
     private MyDialog mDialog;
     private boolean mHolding;
     private Throwable mError;
+    private boolean mChanged;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,6 +74,7 @@ public class SipMain extends PreferenceActivity
         mServerUri = setupEditTextPreference("server_address");
         mPassword = (EditTextPreference)
                 getPreferenceScreen().findPreference("password");
+        mPassword.setOnPreferenceChangeListener(this);
         mDisplayName = setupEditTextPreference("display_name");
         mMyIp = getPreferenceScreen().findPreference("my_ip");
         mMyIp.setOnPreferenceClickListener(
@@ -96,31 +102,32 @@ public class SipMain extends PreferenceActivity
 
         new Thread(new Runnable() {
             public void run() {
-                try {
-                    mAudioCall = createSipAudioCall();
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            mMyIp.setSummary(mAudioCall.getLocalIp());
-                        }
-                    });
-                } catch (SipException e) {
-                    Log.e(TAG, "setupSipAudioCall()", e);
-                }
+                final String localIp = getLocalIp();
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        mMyIp.setSummary(localIp);
+                    }
+                });
             }
         }).start();
     }
 
-    private SipAudioCall createSipAudioCall() throws SipException {
-        return new SipAudioCall(this, createLocalSipProfile(), createListener(),
-                true);
+    private void createSipAudioCall() throws SipException {
+        if ((mAudioCall == null) || mChanged) {
+            if (mAudioCall != null) mAudioCall.close();
+            mAudioCall = new SipAudioCall(this, createLocalSipProfile(),
+                    createListener());
+            mChanged = false;
+            Log.v(TAG, "info changed; recreate AudioCall isntance");
+        }
     }
 
     private EditTextPreference setupEditTextPreference(String key) {
-        EditTextPreference preference = (EditTextPreference)
+        EditTextPreference pref = (EditTextPreference)
                 getPreferenceScreen().findPreference(key);
-        preference.setOnPreferenceChangeListener(this);
-        preference.setSummary(preference.getText());
-        return preference;
+        pref.setOnPreferenceChangeListener(this);
+        pref.setSummary(pref.getText());
+        return pref;
     }
 
     @Override
@@ -131,7 +138,12 @@ public class SipMain extends PreferenceActivity
 
     public boolean onPreferenceChange(Preference pref, Object newValue) {
         String value = (String) newValue;
-        pref.setSummary((value == null) ? "" : value.trim());
+        if (value == null) value = "";
+        if (pref != mPassword) pref.setSummary(value);
+        if ((pref != mPeerUri)
+                && !value.equals(((EditTextPreference) pref).getText())) {
+            mChanged = true;
+        }
         return true;
     }
 
@@ -140,17 +152,21 @@ public class SipMain extends PreferenceActivity
         return ((text == null) ? "" : text.toString());
     }
 
-    private SipProfile createLocalSipProfile() {
+    private SipProfile createLocalSipProfile() throws SipException {
         try {
-            if (mLocalProfile == null) {
-                mLocalProfile = new SipProfile.Builder(getServerUri())
+            if ((mLocalProfile == null) || mChanged) {
+                String serverUri = getText(mServerUri);
+                if (TextUtils.isEmpty(serverUri)) {
+                    throw new SipException("Server address missing");
+                }
+                mLocalProfile = new SipProfile.Builder(serverUri)
                         .setPassword(getText(mPassword))
                         .setDisplayName(getText(mDisplayName))
                         .build();
             }
             return mLocalProfile;
         } catch (ParseException e) {
-            throw new RuntimeException(e);
+            throw new SipException("createLoalSipProfile", e);
         }
     }
 
@@ -160,6 +176,11 @@ public class SipMain extends PreferenceActivity
         } catch (ParseException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void setCallStatus(Throwable e) {
+        mError = e;
+        setCallStatus();
     }
 
     private void setCallStatus() {
@@ -182,6 +203,10 @@ public class SipMain extends PreferenceActivity
 
     private SipAudioCall.Listener createListener() {
         return new SipAudioCall.Listener() {
+            public void onCalling(SipAudioCall call) {
+                setCallStatus();
+            }
+
             public void onReadyForCall(SipAudioCall call) {
                 setCallStatus();
             }
@@ -220,12 +245,23 @@ public class SipMain extends PreferenceActivity
         };
     }
 
+    private void register() {
+        try {
+            createSipAudioCall();
+            mAudioCall.register();
+        } catch (SipException e) {
+            Log.e(TAG, "makeCall()", e);
+            setCallStatus(e);
+        }
+    }
+
     private void makeCall() {
         try {
+            createSipAudioCall();
             mAudioCall.makeCall(createPeerSipProfile());
         } catch (SipException e) {
-            // TODO: UI feedback
             Log.e(TAG, "makeCall()", e);
+            setCallStatus(e);
         }
     }
 
@@ -233,8 +269,8 @@ public class SipMain extends PreferenceActivity
         try {
             mAudioCall.endCall();
         } catch (SipException e) {
-            // TODO: UI feedback
             Log.e(TAG, "endCall()", e);
+            setCallStatus(e);
         }
     }
 
@@ -246,8 +282,8 @@ public class SipMain extends PreferenceActivity
                 mAudioCall.endCall();
             }
         } catch (SipException e) {
-            // TODO: UI feedback
             Log.e(TAG, "holdOrEndCall()", e);
+            setCallStatus(e);
         }
     }
 
@@ -255,8 +291,8 @@ public class SipMain extends PreferenceActivity
         try {
             mAudioCall.answerCall();
         } catch (SipException e) {
-            // TODO: UI feedback
             Log.e(TAG, "answerCall()", e);
+            setCallStatus(e);
         }
     }
 
@@ -272,8 +308,8 @@ public class SipMain extends PreferenceActivity
         try {
             mAudioCall.continueCall();
         } catch (SipException e) {
-            // TODO: UI feedback
             Log.e(TAG, "continueCall()", e);
+            setCallStatus(e);
         }
     }
 
@@ -295,17 +331,36 @@ public class SipMain extends PreferenceActivity
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        super.onCreateOptionsMenu(menu);
-        menu.add(0, MENU_CALL, 0, R.string.menu_call);
-        menu.add(0, MENU_HANGUP, 0, R.string.menu_hangup);
-        menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        super.onPrepareOptionsMenu(menu);
+        SipSessionState state = ((mAudioCall == null) || mChanged)
+                ? SipSessionState.READY_FOR_CALL
+                : mAudioCall.getState();
+
+        Log.v(TAG, "actOnCallStatus(), status=" + state);
+        menu.clear();
+        switch (state) {
+        case READY_FOR_CALL:
+            menu.add(0, MENU_REGISTER, 0, R.string.menu_register);
+            menu.add(0, MENU_CALL, 0, R.string.menu_call);
+            break;
+        case IN_CALL:
+            menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
+            /* pass through */
+        default:
+            menu.add(0, MENU_HANGUP, 0, R.string.menu_hangup);
+        }
         return true;
     }
 
     @Override
     public synchronized boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
+            case MENU_REGISTER:
+                register();
+                setCallStatus();
+                return true;
+
             case MENU_CALL:
                 makeCall();
                 return true;
@@ -323,10 +378,6 @@ public class SipMain extends PreferenceActivity
 
     private String getPeerUri() {
         return getText(mPeerUri);
-    }
-
-    private String getServerUri() {
-        return getText(mServerUri);
     }
 
     private void setValue(EditTextPreference pref, String value) {
@@ -348,8 +399,8 @@ public class SipMain extends PreferenceActivity
     }
 
     private String getCallStatus() {
-        if (mError != null) return mError.toString();
-        if (mAudioCall == null) return "Uninitialized";
+        if (mError != null) return mError.getMessage();
+        if (mAudioCall == null) return "Ready to call (not registered)";
         switch (mAudioCall.getState()) {
         case REGISTERING:
             return "Registering...";
@@ -377,33 +428,37 @@ public class SipMain extends PreferenceActivity
     }
 
     private void actOnCallStatus() {
-        Log.v(TAG, "actOnCallStatus(), status=" + mAudioCall.getState());
-        switch (mAudioCall.getState()) {
-        case READY_FOR_CALL:
-            makeCall();
-            break;
-        case INCOMING_CALL:
-            answerOrEndCall();
-            break;
-        case OUTGOING_CALL_RING_BACK:
-        case OUTGOING_CALL:
-        case IN_CALL_CHANGING:
-            endCall();
-            break;
-        case IN_CALL:
-            if (!mHolding) {
-                holdOrEndCall();
-            } else {
-                continueCall();
+        if ((mAudioCall == null) || mChanged) {
+            register();
+        } else {
+            switch (mAudioCall.getState()) {
+            case READY_FOR_CALL:
+                makeCall();
+                break;
+            case INCOMING_CALL:
+                answerOrEndCall();
+                break;
+            case OUTGOING_CALL_RING_BACK:
+            case OUTGOING_CALL:
+            case IN_CALL_CHANGING:
+                endCall();
+                break;
+            case IN_CALL:
+                if (!mHolding) {
+                    holdOrEndCall();
+                } else {
+                    continueCall();
+                }
+                break;
+            case OUTGOING_CALL_CANCELING:
+            case REGISTERING:
+            case INCOMING_CALL_ANSWERING:
+            default:
+                // do nothing
+                break;
             }
-            break;
-        case OUTGOING_CALL_CANCELING:
-        case REGISTERING:
-        case INCOMING_CALL_ANSWERING:
-        default:
-            // do nothing
-            break;
         }
+
         setCallStatus();
     }
 
@@ -470,5 +525,16 @@ public class SipMain extends PreferenceActivity
         int getId();
         Dialog createDialog(int id);
         void prepareDialog(int id, Dialog dialog);
+    }
+
+    private String getLocalIp() {
+        try {
+            DatagramSocket s = new DatagramSocket();
+            s.connect(InetAddress.getByName("192.168.1.1"), 80);
+            return s.getLocalAddress().getHostAddress();
+        } catch (IOException e) {
+            Log.w(TAG, "getLocalIp(): " + e);
+            return "127.0.0.1";
+        }
     }
 }

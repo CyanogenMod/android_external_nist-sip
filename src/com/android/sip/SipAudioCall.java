@@ -58,6 +58,7 @@ public class SipAudioCall {
 
     public interface Listener {
         void onReadyForCall(SipAudioCall call);
+        void onCalling(SipAudioCall call);
         void onRinging(SipAudioCall call, SipProfile caller);
         void onRingingBack(SipAudioCall call);
         void onCallEstablished(SipAudioCall call);
@@ -84,8 +85,10 @@ public class SipAudioCall {
     private Ringtone mRingtone;
     private ToneGenerator mRingbackTone;
 
+    private SipProfile mPendingCallRequest;
+
     public SipAudioCall(Context context, SipProfile localProfile,
-            Listener listener, boolean toRegister) throws SipException {
+            Listener listener) throws SipException {
         if (listener == null) {
             throw new NullPointerException("listener can't be null");
         }
@@ -95,7 +98,11 @@ public class SipAudioCall {
         mSipSessionLayer = new SipSessionLayer();
         mSipSession = mSipSessionLayer.createSipSession(
                 localProfile, createSipSessionListener());
-        if (toRegister) mSipSession.register();
+    }
+
+    // TODO: remove this after SipService is done
+    public void register() throws SipException {
+        if (mSipSession != null) mSipSession.register();
     }
 
     public void close() {
@@ -120,6 +127,11 @@ public class SipAudioCall {
 
     private SipSessionListener createSipSessionListener() {
         return new SipSessionListener() {
+            public void onCalling(SipSession session) {
+                Log.v(TAG, "calling... " + session);
+                mListener.onCalling(SipAudioCall.this);
+            }
+
             public void onRinging(SipSession session, SipProfile caller,
                     byte[] sessionDescription) {
                 startRinging();
@@ -192,16 +204,31 @@ public class SipAudioCall {
 
             public void onRegistrationDone(SipSession session) {
                 Log.v(TAG, "sip registration done: " + session);
-                mListener.onReadyForCall(SipAudioCall.this);
+                synchronized (session) {
+                    if (mPendingCallRequest != null) {
+                        SipProfile peerProfile = mPendingCallRequest;
+                        mPendingCallRequest = null;
+                        try {
+                            makeCall(peerProfile);
+                        } catch (SipException e) {
+                            mListener.onError(SipAudioCall.this, e);
+                            return;
+                        }
+                    } else {
+                        mListener.onReadyForCall(SipAudioCall.this);
+                    }
+                }
             }
 
             public void onRegistrationFailed(SipSession session, Throwable e) {
                 Log.v(TAG, "sip registration failed: " + session + ": " + e);
+                if (mPendingCallRequest != null) mPendingCallRequest = null;
                 mListener.onError(SipAudioCall.this, e);
             }
 
             public void onRegistrationTimeout(SipSession session) {
                 Log.v(TAG, "sip registration timed out: " + session);
+                if (mPendingCallRequest != null) mPendingCallRequest = null;
                 mListener.onError(SipAudioCall.this,
                         new SipException("SIP registration timed out"));
             }
@@ -209,7 +236,16 @@ public class SipAudioCall {
     }
 
     public void makeCall(SipProfile peerProfile) throws SipException {
-        mSipSession.makeCall(peerProfile, createOfferSessionDescription());
+        synchronized (mSipSession) {
+            if (mSipSession.getState() == SipSessionState.READY_FOR_CALL) {
+                Log.v(TAG, "making call...");
+                mSipSession.makeCall(
+                        peerProfile, createOfferSessionDescription());
+            } else {
+                Log.v(TAG, "hold the call request...");
+                mPendingCallRequest = peerProfile;
+            }
+        }
     }
 
     public void endCall() throws SipException {

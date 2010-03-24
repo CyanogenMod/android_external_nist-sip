@@ -56,9 +56,9 @@ public class SipSessionLayer {
     }
 
     private String getMyIp() throws IOException {
-            DatagramSocket s = new DatagramSocket();
-            s.connect(InetAddress.getByName("192.168.1.1"), 80);
-            return s.getLocalAddress().getHostAddress();
+        DatagramSocket s = new DatagramSocket();
+        s.connect(InetAddress.getByName("192.168.1.1"), 80);
+        return s.getLocalAddress().getHostAddress();
     }
 
     public synchronized void close() {

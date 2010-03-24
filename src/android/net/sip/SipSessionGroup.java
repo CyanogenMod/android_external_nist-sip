@@ -480,6 +480,7 @@ class SipSessionGroup implements SipListener {
                         mPeerProfile, sessionDescription, generateTag());
                 mDialog = mClientTransaction.getDialog();
                 mState = SipSessionState.OUTGOING_CALL;
+                mListener.onCalling(SipSessionImpl.this);
                 return true;
             } else if (isRequestEvent(Request.INVITE, evt)) {
                 RequestEvent event = (RequestEvent) evt;
@@ -717,8 +718,8 @@ class SipSessionGroup implements SipListener {
         }
 
         private Exception createCallbackException(Response response) {
-            return new SipException("Got response: " + response.getStatusCode()
-                    + " " + response.getReasonPhrase());
+            return new SipException(String.format("Response: %s (%d)",
+                    response.getReasonPhrase(), response.getStatusCode()));
         }
 
         private void establishCall(boolean inCall) {
