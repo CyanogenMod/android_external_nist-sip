@@ -48,6 +48,7 @@ public class SipMain extends PreferenceActivity
     private static final int MENU_CALL = Menu.FIRST + 1;
     private static final int MENU_HANGUP = Menu.FIRST + 2;
     private static final int MENU_SEND_DTMF_1 = Menu.FIRST + 3;
+    private static final int MENU_SPEAKER_MODE = Menu.FIRST + 4;
 
     private Preference mCallStatus;
     private EditTextPreference mPeerUri;
@@ -63,6 +64,7 @@ public class SipMain extends PreferenceActivity
     private boolean mHolding;
     private Throwable mError;
     private boolean mChanged;
+    private boolean mSpeakerMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -268,6 +270,7 @@ public class SipMain extends PreferenceActivity
     private void endCall() {
         try {
             mAudioCall.endCall();
+            mSpeakerMode = false;
         } catch (SipException e) {
             Log.e(TAG, "endCall()", e);
             setCallStatus(e);
@@ -345,6 +348,8 @@ public class SipMain extends PreferenceActivity
             menu.add(0, MENU_CALL, 0, R.string.menu_call);
             break;
         case IN_CALL:
+            menu.add(0, MENU_SPEAKER_MODE, 0, (mSpeakerMode ?
+                    R.string.menu_incall_mode : R.string.menu_speaker_mode));
             menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
             /* pass through */
         default:
@@ -367,6 +372,15 @@ public class SipMain extends PreferenceActivity
 
             case MENU_HANGUP:
                 endCall();
+                return true;
+
+            case MENU_SPEAKER_MODE:
+                mSpeakerMode = !mSpeakerMode;
+                if (mSpeakerMode == true) {
+                    mAudioCall.setSpeakerMode();
+                } else {
+                    mAudioCall.setInCallMode();
+                }
                 return true;
 
             case MENU_SEND_DTMF_1:

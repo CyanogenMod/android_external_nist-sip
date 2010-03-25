@@ -327,7 +327,7 @@ class RtpAudioSession implements RtpSession {
                 int count = recorder.read(recordBuffer, 0, recordBufferSize);
 
                 // TODO: remove the mic gain if the issue is fixed on Passion.
-                adjustMicGain(recordBuffer, count, 32);
+                adjustMicGain(recordBuffer, count, 16);
 
                 int encodeCount =
                         encoder.encode(recordBuffer, count, buffer, offset);

@@ -330,12 +330,12 @@ public class SipAudioCall {
         return sdpBuilder;
     }
 
-    private void setInCallMode() {
+    public void setInCallMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setMode(AudioManager.MODE_IN_CALL);
     }
 
-    private void setSpeakerMode() {
+    public void setSpeakerMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setMode(AudioManager.MODE_NORMAL);
     }
