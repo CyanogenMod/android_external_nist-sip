@@ -18,6 +18,8 @@ package android.net.sip;
 
 import gov.nist.javax.sip.clientauthutils.UserCredentials;
 
+import android.text.TextUtils;
+
 import java.text.ParseException;
 import javax.sip.InvalidArgumentException;
 import javax.sip.ListeningPoint;
@@ -32,6 +34,7 @@ import javax.sip.address.URI;
  */
 public class SipProfile implements UserCredentials {
     private Address mAddress;
+    private String mOutboundProxy;
     private String mPassword;
     private String mDomain;
     private String mProtocol = ListeningPoint.UDP;
@@ -41,6 +44,7 @@ public class SipProfile implements UserCredentials {
         private SipProfile mProfile = new SipProfile();
         private SipURI mUri;
         private String mDisplayName;
+        private String mOutboundProxy;
 
         {
             try {
@@ -94,6 +98,11 @@ public class SipProfile implements UserCredentials {
             return this;
         }
 
+        public Builder setOutboundProxy(String outboundProxy) {
+            mOutboundProxy = outboundProxy;
+            return this;
+        }
+
         public Builder setDisplayName(String displayName) throws ParseException {
             mDisplayName = displayName;
             return this;
@@ -106,6 +115,12 @@ public class SipProfile implements UserCredentials {
             try {
                 mProfile.mAddress = mAddressFactory.createAddress(
                         mDisplayName, mUri);
+                if (!TextUtils.isEmpty(mOutboundProxy)) {
+                    SipURI uri = (SipURI)
+                            mAddressFactory.createURI(fix(mOutboundProxy));
+                    mProfile.mOutboundProxy = uri.getHost() + ":"
+                            + uri.getPort() + "/UDP";
+                }
             } catch (ParseException e) {
                 // must not occur
                 throw new RuntimeException(e);
@@ -152,5 +167,9 @@ public class SipProfile implements UserCredentials {
 
     public String getProtocol() {
         return mProtocol;
+    }
+
+    public String getOutboundProxy() {
+        return mOutboundProxy;
     }
 }

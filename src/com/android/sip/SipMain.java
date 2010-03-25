@@ -55,6 +55,7 @@ public class SipMain extends PreferenceActivity
     private EditTextPreference mServerUri;
     private EditTextPreference mPassword;
     private EditTextPreference mDisplayName;
+    private EditTextPreference mOutboundProxy;
     private Preference mMyIp;
 
     private SipProfile mLocalProfile;
@@ -78,6 +79,7 @@ public class SipMain extends PreferenceActivity
                 getPreferenceScreen().findPreference("password");
         mPassword.setOnPreferenceChangeListener(this);
         mDisplayName = setupEditTextPreference("display_name");
+        mOutboundProxy = setupEditTextPreference("proxy_address");
         mMyIp = getPreferenceScreen().findPreference("my_ip");
         mMyIp.setOnPreferenceClickListener(
                 new OnPreferenceClickListener() {
@@ -164,6 +166,7 @@ public class SipMain extends PreferenceActivity
                 mLocalProfile = new SipProfile.Builder(serverUri)
                         .setPassword(getText(mPassword))
                         .setDisplayName(getText(mDisplayName))
+                        .setOutboundProxy(getText(mOutboundProxy))
                         .build();
             }
             return mLocalProfile;
@@ -329,7 +332,7 @@ public class SipMain extends PreferenceActivity
 
     private Preference[] allPreferences() {
         return new Preference[] {
-            mCallStatus, mPeerUri, mServerUri, mPassword, mDisplayName, mMyIp
+            mCallStatus, mPeerUri, mServerUri, mPassword, mDisplayName, mOutboundProxy, mMyIp
         };
     }
 

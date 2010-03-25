@@ -16,6 +16,7 @@
 
 package android.net.sip;
 
+import android.text.TextUtils;
 import android.util.Log;
 
 import java.io.IOException;
@@ -88,6 +89,10 @@ class SipSessionGroup implements SipListener {
         SipFactory sipFactory = SipFactory.getInstance();
         Properties properties = new Properties();
         properties.setProperty("javax.sip.STACK_NAME", STACK_NAME);
+        String outboundProxy = myself.getOutboundProxy();
+        if (!TextUtils.isEmpty(outboundProxy)) {
+            properties.setProperty("javax.sip.OUTBOUND_PROXY", outboundProxy);
+        }
         SipStack stack = mSipStack = sipFactory.createSipStack(properties);
         stack.start();
 
@@ -126,7 +131,6 @@ class SipSessionGroup implements SipListener {
             throw new SipException("allocateLocalPort()", e);
         }
     }
-
 
     private synchronized SipSessionImpl getSipSession(EventObject event) {
         String[] keys = mSipHelper.getPossibleSessionKeys(event);
@@ -565,6 +569,11 @@ class SipSessionGroup implements SipListener {
                     mSipHelper.sendInviteAck(event, mDialog);
                     mPeerSessionDescription = response.getRawContent();
                     establishCall(false);
+                    return true;
+                case Response.PROXY_AUTHENTICATION_REQUIRED:
+                    mClientTransaction = mSipHelper.handleChallenge(
+                            (ResponseEvent)evt, mLocalProfile);
+                    mDialog = mClientTransaction.getDialog();
                     return true;
                 default:
                     if (statusCode >= 400) {

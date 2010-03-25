@@ -53,6 +53,14 @@
         android:dialogTitle="@string/display_name_title"
         android:singleLine="true"/>
 
+    <EditTextPreference
+        android:key="proxy_address"
+        android:title="@string/proxy_address_title"
+        android:defaultValue="@string/proxy_address_summary"
+        android:summary="@string/proxy_address_summary"
+        android:dialogTitle="@string/proxy_address_title"
+        android:singleLine="true"/>
+
     <Preference
         android:key="my_ip"
         android:title="@string/my_ip_title"

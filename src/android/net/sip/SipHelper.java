@@ -156,7 +156,8 @@ class SipHelper {
         try {
             FromHeader fromHeader = createFromHeader(userProfile, tag);
             ToHeader toHeader = createToHeader(userProfile);
-            SipURI requestURI = userProfile.getUri();
+            SipURI requestURI = mAddressFactory.createSipURI("sip:"
+                    + userProfile.getSipDomain());
             List<ViaHeader> viaHeaders = createViaHeaders();
             CallIdHeader callIdHeader = createCallIdHeader();
             CSeqHeader cSeqHeader = createCSeqHeader(Request.REGISTER);
@@ -181,7 +182,7 @@ class SipHelper {
         }
     }
 
-    public void handleChallenge(ResponseEvent responseEvent,
+    public ClientTransaction handleChallenge(ResponseEvent responseEvent,
             final SipProfile userProfile) throws SipException {
         AccountManager accountManager = new AccountManager() {
             public UserCredentials getCredentials(ClientTransaction
@@ -196,6 +197,7 @@ class SipHelper {
         ClientTransaction ct = authenticationHelper.handleChallenge(
                 responseEvent.getResponse(), tid, mSipProvider, 5);
         ct.sendRequest();
+        return ct;
     }
 
     public ClientTransaction sendInvite(SipProfile caller, SipProfile callee,
