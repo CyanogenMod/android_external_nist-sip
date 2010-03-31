@@ -18,6 +18,8 @@ package android.net.sip;
 
 import gov.nist.javax.sip.clientauthutils.UserCredentials;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.text.TextUtils;
 
 import java.text.ParseException;
@@ -32,12 +34,23 @@ import javax.sip.address.URI;
 
 /**
  */
-public class SipProfile implements UserCredentials {
+public class SipProfile implements UserCredentials, Parcelable {
     private Address mAddress;
     private String mOutboundProxy;
     private String mPassword;
     private String mDomain;
     private String mProtocol = ListeningPoint.UDP;
+
+    public static final Parcelable.Creator<SipProfile> CREATOR =
+            new Parcelable.Creator<SipProfile>() {
+                public SipProfile createFromParcel(Parcel in) {
+                    return new SipProfile(in);
+                }
+
+                public SipProfile[] newArray(int size) {
+                    return new SipProfile[size];
+                }
+            };
 
     public static class Builder {
         private AddressFactory mAddressFactory;
@@ -130,6 +143,26 @@ public class SipProfile implements UserCredentials {
     }
 
     private SipProfile() {
+    }
+
+    private SipProfile(Parcel in) {
+        mAddress = (Address) in.readSerializable();
+        mOutboundProxy = in.readString();
+        mPassword = in.readString();
+        mDomain = in.readString();
+        mProtocol = in.readString();
+    }
+
+    public void writeToParcel(Parcel out, int flags) {
+        out.writeSerializable(mAddress);
+        out.writeString(mOutboundProxy);
+        out.writeString(mPassword);
+        out.writeString(mDomain);
+        out.writeString(mProtocol);
+    }
+
+    public int describeContents() {
+        return 0;
     }
 
     public SipURI getUri() {
