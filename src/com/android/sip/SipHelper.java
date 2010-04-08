@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-package android.net.sip;
-
-import android.util.Log;
+package com.android.sip;
 
 import gov.nist.javax.sip.SipStackExt;
 import gov.nist.javax.sip.clientauthutils.AccountManager;
 import gov.nist.javax.sip.clientauthutils.AuthenticationHelper;
 import gov.nist.javax.sip.clientauthutils.UserCredentials;
+
+import android.net.sip.SessionDescription;
+import android.net.sip.SipProfile;
+import android.util.Log;
 
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -170,7 +172,7 @@ class SipHelper {
             request.addHeader(createContactHeader(userProfile));
             request.addHeader(mHeaderFactory.createExpiresHeader(expiry));
             Header userAgentHeader = mHeaderFactory.createHeader("User-Agent",
-                    "AndroidSip/0.1.001");
+                    "SIPAUA/0.1.001");
             request.addHeader(userAgentHeader);
 
             ClientTransaction clientTransaction =
@@ -352,7 +354,7 @@ class SipHelper {
         // SipStack increases seq number automatically
         // so no need to call dialog.incrementLocalSequenceNumber().
         Request byeRequest = dialog.createRequest(Request.BYE);
-        Log.v(TAG, "send BYE: " + byeRequest);
+        Log.d(TAG, "send BYE: " + byeRequest);
         dialog.sendRequest(mSipProvider.getNewClientTransaction(byeRequest));
     }
 
@@ -385,66 +387,42 @@ class SipHelper {
         }
     }
 
-    public String getSessionKey(SipSession session) {
-        Dialog dialog = session.getDialog();
-        return (dialog == null
-                ?  getSessionKey(session.getLocalProfile().getSipAddress())
-                : dialog.getCallId().getCallId());
-    }
-
-    public static String[] getPossibleSessionKeys(EventObject event) {
+    public static String getCallId(EventObject event) {
         if (event instanceof RequestEvent) {
-            return getPossibleSessionKeys(((RequestEvent) event).getRequest());
+            return getCallId(((RequestEvent) event).getRequest());
         } else if (event instanceof ResponseEvent) {
-            return getPossibleSessionKeys(
-                    ((ResponseEvent) event).getResponse());
+            return getCallId(((ResponseEvent) event).getResponse());
         } else if (event instanceof DialogTerminatedEvent) {
             Dialog dialog = ((DialogTerminatedEvent) event).getDialog();
-            return getPossibleSessionKeys(
-                    ((DialogTerminatedEvent) event).getDialog());
+            return getCallId(((DialogTerminatedEvent) event).getDialog());
         } else if (event instanceof TransactionTerminatedEvent) {
             TransactionTerminatedEvent e = (TransactionTerminatedEvent) event;
-            return getPossibleSessionKeys(e.isServerTransaction()
+            return getCallId(e.isServerTransaction()
                     ? e.getServerTransaction()
                     : e.getClientTransaction());
         } else {
             Object source = event.getSource();
             if (source instanceof Transaction) {
-                return getPossibleSessionKeys(((Transaction) source));
+                return getCallId(((Transaction) source));
             } else if (source instanceof Dialog) {
-                return getPossibleSessionKeys((Dialog) source);
+                return getCallId((Dialog) source);
             }
         }
-        return new String[0];
+        return "";
     }
 
-    private static String[] getPossibleSessionKeys(Message message) {
+    public static String getCallId(Transaction transaction) {
+        return ((transaction != null) ? getCallId(transaction.getRequest())
+                                      : "");
+    }
+
+    private static String getCallId(Message message) {
         CallIdHeader callIdHeader =
                 (CallIdHeader) message.getHeader(CallIdHeader.NAME);
-        FromHeader fromHeader = (FromHeader) message.getHeader(FromHeader.NAME);
-        ToHeader toHeader = (ToHeader) message.getHeader(ToHeader.NAME);
-        return new String[] {callIdHeader.getCallId(),
-                getSessionKey(fromHeader.getAddress()),
-                getSessionKey(toHeader.getAddress())};
+        return callIdHeader.getCallId();
     }
 
-    private static String[] getPossibleSessionKeys(Transaction transaction) {
-        return getPossibleSessionKeys(transaction.getRequest());
-    }
-
-    private static String[] getPossibleSessionKeys(Dialog dialog) {
-        return new String[] {dialog.getCallId().getCallId()};
-    }
-
-    private static String getSessionKey(Address address) {
-        Address clonedAddress = (Address) address.clone();
-        // remove all optional fields
-        try {
-            clonedAddress.setDisplayName(null);
-            ((SipURI) clonedAddress.getURI()).setUserPassword(null);
-        } catch (ParseException e) {
-            // ignored
-        }
-        return clonedAddress.toString();
+    private static String getCallId(Dialog dialog) {
+        return dialog.getCallId().getCallId();
     }
 }

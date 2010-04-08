@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-        package="com.android.sip">
+        package="com.android.sip.demo">
     <uses-permission android:name="android.permission.INTERNET"></uses-permission>
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"></uses-permission>
 	<uses-permission android:name="android.permission.RECORD_AUDIO"></uses-permission>
@@ -19,6 +19,7 @@
 
     <application android:label="@string/app_name">
         <activity android:name=".SipMain"
+                  android:launchMode="singleTop"
                   android:configChanges="orientation|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -26,5 +27,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".IncomingCallReceiver">
+            <intent-filter>
+                <action android:name="com.android.sip.demo.SipMain" />
+            </intent-filter>
+        </receiver>
+
+        <service android:name="com.android.sip.SipServiceBinder" android:process=":remote">
+            <intent-filter>
+                <!-- These are the interfaces supported by the service, which
+                     you can bind to. -->
+                <action android:name="android.net.sip.ISipService" />
+                <!-- This is an action code you can use to select the service
+                     without explicitly supplying the implementation class. -->
+                <action android:name="android.net.sip.SERVICE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

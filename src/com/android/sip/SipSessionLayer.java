@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-package android.net.sip;
+package com.android.sip;
 
+import android.net.sip.ISipSession;
+import android.net.sip.ISipSessionListener;
+import android.net.sip.SipProfile;
 import android.util.Log;
 
 import java.io.IOException;
@@ -23,17 +26,17 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
-
 import javax.sip.SipException;
 
 /**
- * @hide
- * Creates and manages multiple {@link SipSession}.
+ * Creates and manages multiple {@link ISipSession}'s.
  */
-public class SipSessionLayer {
+class SipSessionLayer {
     private static final String TAG = SipSessionLayer.class.getSimpleName();
 
     private String mMyIp;
+
+    // local URI --> group
     private Map<String, SipSessionGroup> mGroupMap =
             new HashMap<String, SipSessionGroup>();
 
@@ -45,37 +48,52 @@ public class SipSessionLayer {
         }
     }
 
-    public String getLocalIp() {
-        if (mMyIp != null) return mMyIp;
-        try {
-            return getMyIp();
-        } catch (IOException e) {
-            Log.w(TAG, "getLocalIp(): " + e);
-            return "127.0.0.1";
-        }
-    }
-
     private String getMyIp() throws IOException {
         DatagramSocket s = new DatagramSocket();
         s.connect(InetAddress.getByName("192.168.1.1"), 80);
         return s.getLocalAddress().getHostAddress();
     }
 
-    public synchronized void close() {
+    public synchronized void onNetworkDisconnected() {
         for (String key : mGroupMap.keySet()) {
-            mGroupMap.get(key).close();
+            mGroupMap.get(key).onNetworkDisconnected();
         }
         mGroupMap.clear();
     }
 
-    public synchronized SipSession createSipSession(SipProfile myself,
-            SipSessionListener listener) throws SipException {
+    public ISipSession createSession(SipProfile localProfile,
+            ISipSessionListener listener) throws SipException {
+        return createGroup(localProfile).createSession(listener);
+    }
+
+    private synchronized SipSessionGroup getGroup(SipProfile myself) {
+        String key = myself.getUri().toString();
+        return mGroupMap.get(key);
+    }
+
+    private synchronized SipSessionGroup removeGroup(SipProfile myself) {
+        String key = myself.getUri().toString();
+        return mGroupMap.remove(key);
+    }
+
+    private synchronized SipSessionGroup createGroup(SipProfile myself)
+            throws SipException {
         String key = myself.getUri().toString();
         SipSessionGroup group = mGroupMap.get(key);
         if (group == null) {
-            group = new SipSessionGroup(mMyIp, myself, listener);
+            group = new SipSessionGroup(mMyIp, myself);
             mGroupMap.put(key, group);
         }
-        return group.getDefaultSession();
+        return group;
+    }
+
+    public void openToReceiveCalls(SipProfile myself,
+            ISipSessionListener listener) throws SipException {
+        createGroup(myself).openToReceiveCalls(listener);
+    }
+
+    public void close(SipProfile myself) {
+        SipSessionGroup group = removeGroup(myself);
+        if (group != null) group.close();
     }
 }
