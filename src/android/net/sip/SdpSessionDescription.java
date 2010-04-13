@@ -36,7 +36,7 @@ import javax.sdp.MediaDescription;
 import javax.sdp.SdpException;
 import javax.sip.SipException;
 
-public class SdpSessionDescription implements SessionDescription {
+public class SdpSessionDescription extends SessionDescription {
     private SessionDescriptionImpl mSessionDescription;
     private String mPeerMediaAddress;
     private int mPeerMediaPort;

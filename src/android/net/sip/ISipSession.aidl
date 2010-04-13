@@ -16,22 +16,24 @@
 
 package android.net.sip;
 
-import javax.sip.Dialog;
-import javax.sip.SipException;
+import android.net.sip.ISipSessionListener;
+import android.net.sip.SessionDescription;
+import android.net.sip.SipProfile;
 
-public interface SipSession {
+interface ISipSession {
+    String getLocalIp();
     SipProfile getLocalProfile();
     SipProfile getPeerProfile();
-    SipSessionState getState();
-    Dialog getDialog();
+    String getState();
+    String getCallId();
 
-    void makeCall(SipProfile party, SessionDescription sessionDescription)
-            throws SipException;
-    void answerCall(SessionDescription sessionDescription) throws SipException;
-    void endCall() throws SipException;
+    void setListener(in ISipSessionListener listener);
 
-    void changeCall(SessionDescription sessionDescription) throws SipException;
-
-    void register() throws SipException;
-    void deRegister() throws SipException;
+    void register();
+    void unregister();
+    void makeCall(in SipProfile callee,
+            in SessionDescription sessionDescription);
+    void answerCall(in SessionDescription sessionDescription);
+    void endCall();
+    void changeCall(in SessionDescription sessionDescription);
 }

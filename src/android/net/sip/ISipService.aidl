@@ -16,24 +16,19 @@
 
 package android.net.sip;
 
+import android.net.sip.ISipSession;
+import android.net.sip.ISipSessionListener;
+import android.net.sip.SipProfile;
+
 /**
- * Defines {@link ISipSession} states.
+ * {@hide}
  */
-public enum SipSessionState {
-    READY_TO_CALL,
-    REGISTERING,
-    DEREGISTERING,
-    INCOMING_CALL,
-    INCOMING_CALL_ANSWERING,
-    OUTGOING_CALL,
-    OUTGOING_CALL_RING_BACK,
-    OUTGOING_CALL_CANCELING,
+interface ISipService {
+    void openToReceiveCalls(in SipProfile localProfile,
+            String incomingCallBroadcastAction);
+    void close(in SipProfile localProfile);
 
-    // the states below must be after the session being established
-    IN_CALL,
-    IN_CALL_CHANGING,
-    IN_CALL_CHANGING_CANCELING,
-    IN_CALL_ANSWERING,
-
-    REMOTE_ERROR,
+    ISipSession createSession(in SipProfile localProfile,
+            in ISipSessionListener listener);
+    ISipSession getPendingSession(String callId);
 }
