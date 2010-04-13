@@ -122,24 +122,43 @@ class SipHelper {
         return mHeaderFactory.createMaxForwardsHeader(max);
     }
 
+    private ListeningPoint getListeningPoint() throws SipException {
+        ListeningPoint lp = mSipProvider.getListeningPoint(ListeningPoint.UDP);
+        if (lp == null) lp = mSipProvider.getListeningPoint(ListeningPoint.TCP);
+        if (lp == null) {
+            ListeningPoint[] lps = mSipProvider.getListeningPoints();
+            if ((lps != null) && (lps.length > 0)) lp = lps[0];
+        }
+        if (lp == null) {
+            throw new SipException("no listening point is available");
+        }
+        return lp;
+    }
+
     private List<ViaHeader> createViaHeaders()
-            throws ParseException, InvalidArgumentException {
+            throws ParseException, SipException {
         List<ViaHeader> viaHeaders = new ArrayList<ViaHeader>(1);
-        ListeningPoint lp = mSipProvider.getListeningPoint("udp");
+        ListeningPoint lp = getListeningPoint();
         viaHeaders.add(mHeaderFactory.createViaHeader(lp.getIPAddress(),
-                lp.getPort(), "udp", null));
+                lp.getPort(), lp.getTransport(), null));
         return viaHeaders;
     }
 
     private ContactHeader createContactHeader(SipProfile profile)
-            throws ParseException, InvalidArgumentException {
-        ListeningPoint lp = mSipProvider.getListeningPoint("udp");
+            throws ParseException, SipException {
+        ListeningPoint lp = getListeningPoint();
         SipURI contactURI = createSipUri(profile.getUserName(), lp);
 
         Address contactAddress = mAddressFactory.createAddress(contactURI);
         contactAddress.setDisplayName(profile.getDisplayName());
 
         return mHeaderFactory.createContactHeader(contactAddress);
+    }
+
+    private ContactHeader createWildcardContactHeader() {
+        ContactHeader contactHeader  = mHeaderFactory.createContactHeader();
+        contactHeader.setWildCard();
+        return contactHeader;
     }
 
     private SipURI createSipUri(String username, ListeningPoint lp)
@@ -169,7 +188,13 @@ class SipHelper {
                     Request.REGISTER, callIdHeader, cSeqHeader, fromHeader,
                     toHeader, viaHeaders, maxForwards);
 
-            request.addHeader(createContactHeader(userProfile));
+            if (expiry == 0) {
+                // remove all previous registrations by wildcard
+                // rfc3261#section-10.2.2
+                request.addHeader(createWildcardContactHeader());
+            } else {
+                request.addHeader(createContactHeader(userProfile));
+            }
             request.addHeader(mHeaderFactory.createExpiresHeader(expiry));
             Header userAgentHeader = mHeaderFactory.createHeader("User-Agent",
                     "SIPAUA/0.1.001");

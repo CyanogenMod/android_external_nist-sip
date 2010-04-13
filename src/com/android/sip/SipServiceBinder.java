@@ -66,9 +66,9 @@ public class SipServiceBinder extends Service {
         public void openToReceiveCalls(SipProfile localProfile,
                 String incomingCallBroadcastAction) {
             try {
-                Log.d(TAG, "register: " + localProfile + ": "
+                Log.d(TAG, "openToReceiveCalls: " + localProfile + ": "
                         + incomingCallBroadcastAction);
-                createReceiver(localProfile, incomingCallBroadcastAction);
+                createCallReceiver(localProfile, incomingCallBroadcastAction);
             } catch (SipException e) {
                 Log.e(TAG, "openToReceiveCalls()", e);
                 // TODO: how to send the exception back
@@ -98,7 +98,6 @@ public class SipServiceBinder extends Service {
     };
 
     private ISipSessionListener mCallReceiver = new SipSessionAdapter() {
-        // the only event this SipSessionListener is interested in
         public void onRinging(ISipSession session, SipProfile caller,
                 byte[] sessionDescription) {
             try {
@@ -141,7 +140,7 @@ public class SipServiceBinder extends Service {
         return mSipReceivers.get(key);
     }
 
-    private synchronized void createReceiver(SipProfile localProfile,
+    private synchronized void createCallReceiver(SipProfile localProfile,
             String incomingCallBroadcastAction) throws SipException {
         String key = localProfile.getUri().toString();
         SipCallReceiver receiver = mSipReceivers.get(key);
@@ -213,12 +212,6 @@ public class SipServiceBinder extends Service {
 
         public void openToReceiveCalls() throws SipException {
             mSipSessionLayer.openToReceiveCalls(mLocalProfile, mCallReceiver);
-            try {
-                mSipSessionLayer.createSession(mLocalProfile, null).register();
-            } catch (RemoteException e) {
-                // should never happen with a local call
-                Log.e(TAG, "openToReceiveCalls()", e);
-            }
         }
 
         public void close() {

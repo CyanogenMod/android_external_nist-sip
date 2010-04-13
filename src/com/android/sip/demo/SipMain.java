@@ -55,6 +55,7 @@ public class SipMain extends PreferenceActivity
         implements Preference.OnPreferenceChangeListener {
     private static final String TAG = SipMain.class.getSimpleName();
     private static final String INCOMING_CALL_ACTION = SipMain.class.getName();
+    private static final int EXPIRY_TIME = 3600;
     private static final int MENU_REGISTER = Menu.FIRST;
     private static final int MENU_CALL = Menu.FIRST + 1;
     private static final int MENU_HANGUP = Menu.FIRST + 2;
@@ -185,7 +186,6 @@ public class SipMain extends PreferenceActivity
             if (mAudioCall == null) {
                 throw new SipException("no session to handle audio call");
             }
-            mSipSession = mAudioCall.getSipSession();
         } catch (SipException e) {
             setCallStatus(e);
         }
@@ -288,7 +288,13 @@ public class SipMain extends PreferenceActivity
                 setCallStatus();
             }
 
+            public void onCalling(SipAudioCall call) {
+                mSipSession = call.getSipSession();
+                setCallStatus();
+            }
+
             public void onRinging(SipAudioCall call, SipProfile caller) {
+                mSipSession = call.getSipSession();
                 showCallNotificationDialog(caller);
                 setCallStatus();
             }
@@ -320,7 +326,7 @@ public class SipMain extends PreferenceActivity
     private ISipSessionListener createRegistrationListener() {
         return new SipSessionAdapter() {
             @Override
-            public void onRegistrationDone(ISipSession session) {
+            public void onRegistrationDone(ISipSession session, int duration) {
                 setCallStatus();
             }
 
@@ -349,7 +355,7 @@ public class SipMain extends PreferenceActivity
             }
             ISipSession session = mSipService.createSession(
                     createLocalProfile(), createRegistrationListener());
-            session.register();
+            session.register(EXPIRY_TIME);
             mSipSession = session;
             mChanged = false;
             setCallStatus();
@@ -363,7 +369,6 @@ public class SipMain extends PreferenceActivity
         try {
             createSipAudioCall();
             mAudioCall.makeCall(createPeerSipProfile(), mSipService);
-            mSipSession = mAudioCall.getSipSession();
         } catch (Exception e) {
             Log.e(TAG, "makeCall()", e);
             setCallStatus(e);

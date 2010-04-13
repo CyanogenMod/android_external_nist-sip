@@ -32,7 +32,7 @@ interface ISipSessionListener {
     void onError(in ISipSession session, String errorClass,
             String errorMessage);
 
-    void onRegistrationDone(in ISipSession session);
+    void onRegistrationDone(in ISipSession session, int duration);
     void onRegistrationFailed(in ISipSession session, String errorClass,
             String errorMessage);
     void onRegistrationTimeout(in ISipSession session);

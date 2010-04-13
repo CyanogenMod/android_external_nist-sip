@@ -43,7 +43,7 @@ public class SipSessionAdapter extends ISipSessionListener.Stub {
     public void onError(ISipSession session, String className, String message) {
     }
 
-    public void onRegistrationDone(ISipSession session) {
+    public void onRegistrationDone(ISipSession session, int duration) {
     }
 
     public void onRegistrationFailed(ISipSession session, String className,

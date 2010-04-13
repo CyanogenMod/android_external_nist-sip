@@ -250,7 +250,7 @@ public class SipAudioCallImpl implements SipAudioCall {
                 }
             }
 
-            public void onRegistrationDone(ISipSession session) {}
+            public void onRegistrationDone(ISipSession session, int duration) {}
             public void onRegistrationFailed(ISipSession session,
                     String className, String message) {}
             public void onRegistrationTimeout(ISipSession session) {}

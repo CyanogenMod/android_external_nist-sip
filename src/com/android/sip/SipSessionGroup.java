@@ -20,6 +20,7 @@ import android.net.sip.ISipSession;
 import android.net.sip.ISipSessionListener;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipProfile;
+import android.net.sip.SipSessionAdapter;
 import android.net.sip.SipSessionState;
 import android.text.TextUtils;
 import android.util.Log;
@@ -67,8 +68,9 @@ import javax.sip.message.Response;
 class SipSessionGroup implements SipListener {
     private static final String TAG = SipSessionGroup.class.getSimpleName();
     private static final int EXPIRY_TIME = 3600;
+    private static final int SHORT_EXPIRY_TIME = 10;
+    private static final int MIN_EXPIRY_TIME = 60;
 
-    private static final EventObject REGISTER = new EventObject("Register");
     private static final EventObject DEREGISTER = new EventObject("Deregister");
     private static final EventObject END_CALL = new EventObject("End call");
     private static final EventObject HOLD_CALL = new EventObject("Hold call");
@@ -82,6 +84,9 @@ class SipSessionGroup implements SipListener {
     // session that processes INVITE requests
     private SipSessionImpl mCallReceiverSession;
     private String mLocalIp;
+
+    private AutoRegistrationProcess mAutoRegistration =
+            new AutoRegistrationProcess();
 
     // call-id-to-SipSession map
     private Map<String, SipSessionImpl> mSessionMap =
@@ -123,6 +128,11 @@ class SipSessionGroup implements SipListener {
             mSipStack = null;
         }
         mSessionMap.clear();
+        mAutoRegistration.stop();
+    }
+
+    public synchronized boolean isClosed() {
+        return (mSipStack == null);
     }
 
     public synchronized void onNetworkDisconnected() {
@@ -139,6 +149,7 @@ class SipSessionGroup implements SipListener {
         } else {
             mCallReceiverSession.setListener(listener);
         }
+        mAutoRegistration.start(listener);
     }
 
     public ISipSession createSession(ISipSessionListener listener) {
@@ -361,12 +372,11 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void register() {
-            // TODO should start with unregister()
+        public void register(int duration) {
             try {
-                process(REGISTER);
+                process(new RegisterCommand(duration));
             } catch (SipException e) {
-                onError(e);
+                onRegistrationFailed(e);
             }
         }
 
@@ -374,23 +384,8 @@ class SipSessionGroup implements SipListener {
             try {
                 process(DEREGISTER);
             } catch (SipException e) {
-                onError(e);
+                onRegistrationFailed(e);
             }
-        }
-
-        private void scheduleNextRegistration(
-                ExpiresHeader expiresHeader) {
-            int expires = EXPIRY_TIME;
-            if (expiresHeader != null) expires = expiresHeader.getExpires();
-            Log.d(TAG, "Refresh registration " + expires + "s later.");
-            new Timer().schedule(new TimerTask() {
-                    public void run() {
-                        try {
-                            process(REGISTER);
-                        } catch (SipException e) {
-                            Log.e(TAG, "", e);
-                        }
-                    }}, expires * 1000L);
         }
 
         private String generateTag() {
@@ -501,6 +496,7 @@ class SipSessionGroup implements SipListener {
             }
             switch (mState) {
             case REGISTERING:
+            case DEREGISTERING:
                 reset();
                 onRegistrationTimeout();
                 break;
@@ -525,6 +521,15 @@ class SipSessionGroup implements SipListener {
             }
         }
 
+        private int getExpiryTime(Response response) {
+            int expires = EXPIRY_TIME;
+            ExpiresHeader expiresHeader = (ExpiresHeader)
+                    response.getHeader(ExpiresHeader.NAME);
+            if (expiresHeader != null) expires = expiresHeader.getExpires();
+            // TODO: check MIN_EXPIRES header
+            return expires;
+        }
+
         private boolean registeringToReady(EventObject evt)
                 throws SipException {
             if (expectResponse(Request.REGISTER, evt)) {
@@ -534,13 +539,11 @@ class SipSessionGroup implements SipListener {
                 int statusCode = response.getStatusCode();
                 switch (statusCode) {
                 case Response.OK:
-                    if (mState == SipSessionState.REGISTERING) {
-                        scheduleNextRegistration((ExpiresHeader)
-                                ((ResponseEvent) evt).getResponse().getHeader(
-                                        ExpiresHeader.NAME));
-                    }
+                    SipSessionState state = mState;
                     reset();
-                    onRegistrationDone();
+                    onRegistrationDone((state == SipSessionState.REGISTERING)
+                            ? getExpiryTime(((ResponseEvent) evt).getResponse())
+                            : -1);
                     return true;
                 case Response.UNAUTHORIZED:
                 case Response.PROXY_AUTHENTICATION_REQUIRED:
@@ -559,7 +562,7 @@ class SipSessionGroup implements SipListener {
         }
 
         private boolean readyForCall(EventObject evt) throws SipException {
-            // expect MakeCallCommand, REGISTER, DEREGISTER
+            // expect MakeCallCommand, RegisterCommand, DEREGISTER
             if (evt instanceof MakeCallCommand) {
                 MakeCallCommand cmd = (MakeCallCommand) evt;
                 mPeerProfile = cmd.getPeerProfile();
@@ -572,9 +575,10 @@ class SipSessionGroup implements SipListener {
                 mState = SipSessionState.OUTGOING_CALL;
                 onCalling();
                 return true;
-            } else if (REGISTER == evt) {
+            } else if (evt instanceof RegisterCommand) {
+                int duration = ((RegisterCommand) evt).getDuration();
                 mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
-                        generateTag(), EXPIRY_TIME);
+                        generateTag(), duration);
                 mDialog = mClientTransaction.getDialog();
                 addSipSession(this);
                 mState = SipSessionState.REGISTERING;
@@ -897,10 +901,10 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        private void onRegistrationDone() {
+        private void onRegistrationDone(int duration) {
             if (mListener == null) return;
             try {
-                mListener.onRegistrationDone(this);
+                mListener.onRegistrationDone(this, duration);
             } catch (Throwable t) {
                 Log.w(TAG, "onRegistrationDone(): " + t);
             }
@@ -1003,21 +1007,140 @@ class SipSessionGroup implements SipListener {
         }
     }
 
+    private class RegisterCommand extends EventObject {
+        private int mDuration;
+
+        public RegisterCommand(int duration) {
+            super(SipSessionGroup.this);
+            mDuration = duration;
+        }
+
+        public int getDuration() {
+            return mDuration;
+        }
+    }
+
     private class MakeCallCommand extends EventObject {
         private SessionDescription mSessionDescription;
 
-        MakeCallCommand(SipProfile peerProfile,
+        public MakeCallCommand(SipProfile peerProfile,
                 SessionDescription sessionDescription) {
             super(peerProfile);
             mSessionDescription = sessionDescription;
         }
 
-        SipProfile getPeerProfile() {
+        public SipProfile getPeerProfile() {
             return (SipProfile) getSource();
         }
 
-        SessionDescription getSessionDescription() {
+        public SessionDescription getSessionDescription() {
             return mSessionDescription;
+        }
+    }
+
+    private class AutoRegistrationProcess extends SipSessionAdapter {
+        private SipSessionImpl mSession;
+        private ISipSessionListener mListener;
+        private Timer mTimer;
+        private int mBackoff = 1;
+
+        public void start(ISipSessionListener listener) {
+            mListener = listener;
+            if (mSession == null) {
+                Log.v(TAG, "start AutoRegistrationProcess...");
+                mBackoff = 1;
+                mSession = (SipSessionImpl) createSession(this);
+                mSession.unregister();
+            }
+        }
+
+        public void stop() {
+            if (mTimer != null) {
+                mTimer.cancel();
+                mTimer = null;
+            }
+            mSession = null;
+        }
+
+        private void register() {
+            synchronized (SipSessionGroup.this) {
+                if (!isClosed()) mSession.register(EXPIRY_TIME);
+            }
+        }
+
+        private TimerTask createRegistrationTask() {
+            return new TimerTask() {
+                    public void run() {
+                        register();
+                    }
+                };
+        }
+
+        private void scheduleNextRegistration(int duration) {
+            if (duration > 0) {
+                if (mTimer == null) mTimer = new Timer();
+                Log.d(TAG, "Refresh registration " + duration + "s later.");
+                mTimer.schedule(createRegistrationTask(), duration * 1000L);
+            } else {
+                Log.d(TAG, "Refresh registration right away");
+                register();
+            }
+        }
+
+        private int backoffDuration() {
+            int duration = SHORT_EXPIRY_TIME * mBackoff;
+            if (duration > 3600) {
+                duration = 3600;
+            } else {
+                mBackoff *= 2;
+            }
+            return duration;
+        }
+
+        @Override
+        public void onRegistrationDone(ISipSession session, int duration) {
+            if (session != mSession) return;
+            if (mListener != null) {
+                try {
+                    mListener.onRegistrationDone(session, duration);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationDone(): " + t);
+                }
+            }
+
+            if (duration > 0) {
+                // allow some overlap to avoid missing calls during renew
+                duration -= MIN_EXPIRY_TIME;
+                if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
+            }
+            scheduleNextRegistration(duration);
+        }
+
+        @Override
+        public void onRegistrationFailed(ISipSession session, String className,
+                String message) {
+            if (session != mSession) return;
+            if (mListener != null) {
+                try {
+                    mListener.onRegistrationFailed(session, className, message);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationFailed(): " + t);
+                }
+            }
+            scheduleNextRegistration(backoffDuration());
+        }
+
+        @Override
+        public void onRegistrationTimeout(ISipSession session) {
+            if (session != mSession) return;
+            if (mListener != null) {
+                try {
+                    mListener.onRegistrationTimeout(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationTimeout(): " + t);
+                }
+            }
+            scheduleNextRegistration(backoffDuration());
         }
     }
 }

@@ -29,7 +29,7 @@ interface ISipSession {
 
     void setListener(in ISipSessionListener listener);
 
-    void register();
+    void register(int duration);
     void unregister();
     void makeCall(in SipProfile callee,
             in SessionDescription sessionDescription);
