@@ -28,12 +28,12 @@ import android.media.RingtoneManager;
 import android.media.ToneGenerator;
 import android.net.Uri;
 import android.net.sip.ISipSession;
-import android.net.sip.ISipSessionListener;
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipAudioCall;
 import android.net.sip.SipProfile;
 import android.net.sip.ISipService;
+import android.net.sip.SipSessionAdapter;
 import android.net.sip.SipSessionState;
 import android.os.RemoteException;
 import android.os.Vibrator;
@@ -82,17 +82,21 @@ public class SipAudioCallImpl implements SipAudioCall {
     public void setListener(SipAudioCall.Listener listener) {
         mListener = listener;
         if (listener == null) return;
-        SipSessionState state = getState();
-        switch (state) {
-        case READY_TO_CALL:
-            listener.onReadyToCall(this);
-            break;
-        case INCOMING_CALL:
-            startRinging();
-            listener.onRinging(this, getPeerProfile(mSipSession));
-            break;
-        default:
-            listener.onError(this, "wrong state to attach call: " + state);
+        try {
+            SipSessionState state = getState();
+            switch (state) {
+            case READY_TO_CALL:
+                listener.onReadyToCall(this);
+                break;
+            case INCOMING_CALL:
+                listener.onRinging(this, getPeerProfile(mSipSession));
+                startRinging();
+                break;
+            default:
+                listener.onError(this, "wrong state to attach call: " + state);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "setListener()", t);
         }
     }
 
@@ -119,8 +123,8 @@ public class SipAudioCallImpl implements SipAudioCall {
         return mSipSession;
     }
 
-    private ISipSessionListener createSipSessionListener() {
-        return new ISipSessionListener.Stub() {
+    private SipSessionAdapter createSipSessionListener() {
+        return new SipSessionAdapter() {
             public void onCalling(ISipSession session) {
                 Log.d(TAG, "calling... " + session);
                 if (mListener != null) {
@@ -128,25 +132,6 @@ public class SipAudioCallImpl implements SipAudioCall {
                         mListener.onCalling(SipAudioCallImpl.this);
                     } catch (Throwable t) {
                         Log.e(TAG, "onCalling()", t);
-                    }
-                }
-            }
-
-            public void onRinging(ISipSession session, SipProfile caller,
-                    byte[] sessionDescription) {
-                startRinging();
-                try {
-                    SdpSessionDescription sd = mOfferSd =
-                            new SdpSessionDescription(sessionDescription);
-                    Log.d(TAG, "sip call ringing: " + session + ": " + sd);
-                } catch (SdpException e) {
-                    Log.e(TAG, "create SDP", e);
-                }
-                if (mListener != null) {
-                    try {
-                        mListener.onRinging(SipAudioCallImpl.this, caller);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "ononRinging()", t);
                     }
                 }
             }
@@ -250,11 +235,6 @@ public class SipAudioCallImpl implements SipAudioCall {
                     }
                 }
             }
-
-            public void onRegistrationDone(ISipSession session, int duration) {}
-            public void onRegistrationFailed(ISipSession session,
-                    String className, String message) {}
-            public void onRegistrationTimeout(ISipSession session) {}
         };
     }
 

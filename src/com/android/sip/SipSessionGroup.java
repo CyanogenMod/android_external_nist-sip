@@ -906,7 +906,7 @@ class SipSessionGroup implements SipListener {
             try {
                 mListener.onRegistrationDone(this, duration);
             } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationDone(): " + t);
+                Log.w(TAG, "onRegistrationDone()", t);
             }
         }
 
@@ -1068,19 +1068,15 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        private TimerTask createRegistrationTask() {
-            return new TimerTask() {
-                    public void run() {
-                        register();
-                    }
-                };
-        }
-
         private void scheduleNextRegistration(int duration) {
             if (duration > 0) {
                 if (mTimer == null) mTimer = new Timer();
                 Log.d(TAG, "Refresh registration " + duration + "s later.");
-                mTimer.schedule(createRegistrationTask(), duration * 1000L);
+                mTimer.schedule(new TimerTask() {
+                            public void run() {
+                                register();
+                            }
+                        }, duration * 1000L);
             } else {
                 Log.d(TAG, "Refresh registration right away");
                 register();
@@ -1104,7 +1100,7 @@ class SipSessionGroup implements SipListener {
                 try {
                     mListener.onRegistrationDone(session, duration);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationDone(): " + t);
+                    Log.w(TAG, "onRegistrationDone()", t);
                 }
             }
 

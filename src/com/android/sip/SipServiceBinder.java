@@ -36,6 +36,8 @@ import android.util.Log;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import javax.sip.SipException;
 
 /**
@@ -46,6 +48,8 @@ public class SipServiceBinder extends Service {
     private static final String TAG = SipServiceBinder.class.getSimpleName();
 
     private SipSessionLayer mSipSessionLayer;
+    private String mNetworkType;
+    private boolean mConnected;
 
     // SipProfile URI --> receiver
     private Map<String, SipCallReceiver> mSipReceivers =
@@ -56,7 +60,6 @@ public class SipServiceBinder extends Service {
             new HashMap<String, ISipSession>();
 
     private ConnectivityReceiver mConnectivityReceiver;
-    private boolean mConnected;
 
     public SipServiceBinder() throws SipException {
         mSipSessionLayer = new SipSessionLayer();
@@ -162,15 +165,24 @@ public class SipServiceBinder extends Service {
         if (receiver != null) receiver.close();
     }
 
-    private synchronized void onConnectivityChanged(boolean connected) {
-        mConnected = connected;
+    private synchronized void onConnectivityChanged(
+            String type, boolean connected) {
+        if (!type.equals(mNetworkType) && !connected) return;
+
+        Log.d(TAG, "onConnectivityChanged(): "
+                + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
+                + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
+
         try {
+            if (mConnected) {
+                mSipSessionLayer.onNetworkDisconnected();
+                mSipSessionLayer = null;
+            }
+            mNetworkType = type;
+            mConnected = connected;
             if (connected) {
                 mSipSessionLayer = new SipSessionLayer();
                 openAllReceivers();
-            } else {
-                mSipSessionLayer.onNetworkDisconnected();
-                mSipSessionLayer = null;
             }
         } catch (SipException e) {
             Log.e(TAG, "onConnectivityChanged()", e);
@@ -212,10 +224,12 @@ public class SipServiceBinder extends Service {
 
         public void openToReceiveCalls() throws SipException {
             mSipSessionLayer.openToReceiveCalls(mLocalProfile, mCallReceiver);
+            Log.v(TAG, "   openToReceiveCalls: " + mIncomingCallBroadcastAction);
         }
 
         public void close() {
             mSipSessionLayer.close(mLocalProfile);
+            Log.v(TAG, "   close: " + mIncomingCallBroadcastAction);
         }
 
         public void processCall(ISipSession session, SipProfile caller,
@@ -235,6 +249,9 @@ public class SipServiceBinder extends Service {
     }
 
     private class ConnectivityReceiver extends BroadcastReceiver {
+        private Timer mTimer = new Timer();
+        private MyTimerTask mTask;
+
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent.getAction().equals(
@@ -243,14 +260,62 @@ public class SipServiceBinder extends Service {
                 if (b != null) {
                     NetworkInfo netInfo = (NetworkInfo)
                             b.get(ConnectivityManager.EXTRA_NETWORK_INFO);
-                    String info = "Connectivity alert:" + netInfo.getTypeName();
+                    String type = netInfo.getTypeName();
                     NetworkInfo.State state = netInfo.getState();
                     if (state == NetworkInfo.State.CONNECTED) {
-                        Log.d(TAG, info + " CONNECTED");
+                        Log.d(TAG, "Connectivity alert: CONNECTED " + type);
+                        onChanged(type, true);
                     } else if (state == NetworkInfo.State.DISCONNECTED) {
-                        Log.d(TAG, info + " DISCONNECTED");
+                        Log.d(TAG, "Connectivity alert: DISCONNECTED " + type);
+                        onChanged(type, false);
+                    } else {
+                        Log.d(TAG, "Connectivity alert not processed: " + state
+                                + " " + type);
                     }
-                    onConnectivityChanged(state == NetworkInfo.State.CONNECTED);
+                }
+            }
+        }
+
+        private void onChanged(String type, boolean connected) {
+            synchronized (SipServiceBinder.this) {
+                // When turning on WIFI, it needs some time for network
+                // connectivity to get stabile so we defer good news (because
+                // we want to skip the interim ones) but deliver bad news
+                // immediately
+                if (connected) {
+                    if (mTask != null) mTask.cancel();
+                    mTask = new MyTimerTask(type, connected);
+                    mTimer.schedule(mTask, 3 * 1000L);
+                } else {
+                    if ((mTask != null) && mTask.mNetworkType.equals(type)) {
+                        mTask.cancel();
+                    }
+                    onConnectivityChanged(type, false);
+                }
+            }
+        }
+
+        private class MyTimerTask extends TimerTask {
+            private boolean mConnected;
+            private String mNetworkType;
+
+            public MyTimerTask(String type, boolean connected) {
+                mNetworkType = type;
+                mConnected = connected;
+            }
+
+            @Override
+            public void run() {
+                synchronized (SipServiceBinder.this) {
+                    if (mTask != this) {
+                        Log.w(TAG, "  unexpected task: " + mNetworkType
+                                + (mConnected ? " CONNECTED" : "DISCONNECTED"));
+                        return;
+                    }
+                    mTask = null;
+                    Log.v(TAG, " deliver change for " + mNetworkType
+                            + (mConnected ? " CONNECTED" : "DISCONNECTED"));
+                    onConnectivityChanged(mNetworkType, mConnected);
                 }
             }
         }
