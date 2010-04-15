@@ -88,6 +88,7 @@ public class SipAudioCallImpl implements SipAudioCall {
             listener.onReadyToCall(this);
             break;
         case INCOMING_CALL:
+            startRinging();
             listener.onRinging(this, getPeerProfile(mSipSession));
             break;
         default:

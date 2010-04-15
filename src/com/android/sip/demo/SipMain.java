@@ -305,6 +305,14 @@ public class SipMain extends PreferenceActivity
             }
 
             public void onCallEnded(SipAudioCall call) {
+                if (mDialog != null) {
+
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            dismissDialog(mDialog.getId());
+                        }
+                    });
+                }
                 setCallStatus();
                 mSipSession = null;
                 setAllPreferencesEnabled(true);
