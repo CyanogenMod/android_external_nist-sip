@@ -16,6 +16,8 @@
 
 package com.android.sip;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -32,10 +34,14 @@ import android.net.sip.SipSessionAdapter;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.util.Log;
 
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Timer;
 import java.util.TimerTask;
 import javax.sip.SipException;
@@ -46,10 +52,12 @@ import javax.sip.SipException;
  */
 public class SipServiceBinder extends Service {
     private static final String TAG = SipServiceBinder.class.getSimpleName();
+    private static final String TIMER_TAG = "_SIP.WakeupTimer_";
 
     private SipSessionLayer mSipSessionLayer;
     private String mNetworkType;
     private boolean mConnected;
+    private AlarmManager mAlarmManager;
 
     // SipProfile URI --> receiver
     private Map<String, SipCallReceiver> mSipReceivers =
@@ -60,10 +68,6 @@ public class SipServiceBinder extends Service {
             new HashMap<String, ISipSession>();
 
     private ConnectivityReceiver mConnectivityReceiver;
-
-    public SipServiceBinder() throws SipException {
-        mSipSessionLayer = new SipSessionLayer();
-    }
 
     private final IBinder mBinder = new ISipService.Stub() {
         public void openToReceiveCalls(SipProfile localProfile,
@@ -131,6 +135,13 @@ public class SipServiceBinder extends Service {
         mConnectivityReceiver = new ConnectivityReceiver();
         registerReceiver(mConnectivityReceiver,
                 new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+
+        mAlarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        WakeupTimer.Factory.setInstance(new WakeupTimer.Factory() {
+            public WakeupTimer createTimer() {
+                return new MyWakeupTimer();
+            }
+        });
     }
 
     @Override
@@ -167,7 +178,11 @@ public class SipServiceBinder extends Service {
 
     private synchronized void onConnectivityChanged(
             String type, boolean connected) {
-        if (!type.equals(mNetworkType) && !connected) return;
+        if (type.equals(mNetworkType)) {
+            if (mConnected == connected) return;
+        } else {
+            if (!connected) return;
+        }
 
         Log.d(TAG, "onConnectivityChanged(): "
                 + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
@@ -254,8 +269,8 @@ public class SipServiceBinder extends Service {
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals(
-                    ConnectivityManager.CONNECTIVITY_ACTION)) {
+            String action = intent.getAction();
+            if (action.equals(ConnectivityManager.CONNECTIVITY_ACTION)) {
                 Bundle b = intent.getExtras();
                 if (b != null) {
                     NetworkInfo netInfo = (NetworkInfo)
@@ -286,6 +301,8 @@ public class SipServiceBinder extends Service {
                     if (mTask != null) mTask.cancel();
                     mTask = new MyTimerTask(type, connected);
                     mTimer.schedule(mTask, 3 * 1000L);
+                    // TODO: hold wakup lock so that we can finish change before
+                    // the device goes to sleep
                 } else {
                     if ((mTask != null) && mTask.mNetworkType.equals(type)) {
                         mTask.cancel();
@@ -321,6 +338,178 @@ public class SipServiceBinder extends Service {
         }
     }
 
+    private class MyWakeupTimer extends BroadcastReceiver
+            implements WakeupTimer, Comparator<MyEvent> {
+        private static final String EVENT_ID = "EventID";
+
+        // runnable --> time to execute in SystemClock
+        private PriorityQueue<MyEvent> mEventQueue =
+                new PriorityQueue<MyEvent>(1, this);
+
+        public MyWakeupTimer() {
+            IntentFilter filter = new IntentFilter(getAction());
+            registerReceiver(this, filter);
+        }
+
+        public synchronized void stop() {
+            unregisterReceiver(this);
+            for (MyEvent event : mEventQueue) {
+                mAlarmManager.cancel(event.mPendingIntent);
+            }
+            mEventQueue.clear();
+            mEventQueue = null;
+        }
+
+        private boolean stopped() {
+            if (mEventQueue == null) {
+                Log.w(TIMER_TAG, "Timer stopped");
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        private MyEvent createMyEvent(long triggerTime, Runnable callback) {
+            MyEvent event = new MyEvent();
+            event.mTriggerTime = triggerTime;
+            event.mCallback = callback;
+
+            Intent intent = new Intent(getAction());
+            intent.putExtra(EVENT_ID, event.toString());
+            PendingIntent pendingIntent = event.mPendingIntent =
+                    PendingIntent.getBroadcast(
+                    SipServiceBinder.this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+            return event;
+        }
+
+        public synchronized void set(long delay, Runnable callback) {
+            if (stopped()) return;
+
+            long t = SystemClock.elapsedRealtime();
+            long triggerTime = t + delay;
+            MyEvent event = createMyEvent(triggerTime, callback);
+
+            MyEvent firstEvent = mEventQueue.peek();
+            if (!mEventQueue.offer(event)) {
+                throw new RuntimeException("failed to add event: " + callback);
+            }
+            if (mEventQueue.peek() == event) {
+                if (firstEvent != null) {
+                    mAlarmManager.cancel(firstEvent.mPendingIntent);
+                }
+                scheduleNext();
+            }
+
+            Log.v(TIMER_TAG, " add event " + event + " scheduled at "
+                    + showTime(triggerTime) + " at " + showTime(t)
+                    + ", #events=" + mEventQueue.size());
+            printQueue();
+        }
+
+        public synchronized void cancel(Runnable callback) {
+            if (stopped()) return;
+
+            for (Iterator<MyEvent> iter = mEventQueue.iterator();
+                    iter.hasNext();) {
+                MyEvent event = iter.next();
+                if (event.mCallback == callback) {
+                    boolean isFirstEvent = (event == mEventQueue.peek());
+                    iter.remove();
+                    if (isFirstEvent) {
+                        mAlarmManager.cancel(event.mPendingIntent);
+                        scheduleNext();
+                    }
+                    return;
+                }
+            }
+        }
+
+        private void scheduleNext() {
+            if (stopped() || mEventQueue.isEmpty()) return;
+
+            MyEvent event = mEventQueue.peek();
+            mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    event.mTriggerTime, event.mPendingIntent);
+        }
+
+        @Override
+        public synchronized void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (getAction().equals(action)) {
+                MyEvent firstEvent = mEventQueue.peek();
+                String eventId = intent.getStringExtra(EVENT_ID);
+                if (firstEvent.toString().equals(eventId)) {
+                    execute();
+                } else {
+                    // log the unexpected event schedule
+                    Log.d(TIMER_TAG, "time's up for " + eventId
+                            + " but event q is:");
+                    printQueue();
+                }
+            }
+        }
+
+        private void printQueue() {
+            int count = 0;
+            for (MyEvent event : mEventQueue) {
+                Log.d(TIMER_TAG, "     " + event + ": scheduled at "
+                        + showTime(event));
+                if (++count >= 5) break;
+            }
+            if (mEventQueue.size() > count) {
+                Log.d(TIMER_TAG, "     .....");
+            }
+        }
+
+        // Comparator
+        public int compare(MyEvent e1, MyEvent e2) {
+            return (int) ((e1.mTriggerTime - e2.mTriggerTime) >> 32);
+        }
+
+        // Comparator
+        public boolean equals(Object that) {
+            return (this == that);
+        }
+
+        private synchronized void execute() {
+            if (stopped()) return;
+
+            MyEvent firstEvent = mEventQueue.poll();
+            if (firstEvent != null) {
+                Log.d(TIMER_TAG, "execute " + firstEvent + " at "
+                        + showTime(firstEvent));
+                // run the callback in a new thread to prevent deadlock
+                new Thread(firstEvent.mCallback).start();
+
+                // TODO: fire all the events that are already late
+                scheduleNext();
+            }
+            printQueue();
+        }
+
+        private String getAction() {
+            return toString();
+        }
+    }
+
+    private class MyEvent {
+        PendingIntent mPendingIntent;
+        long mTriggerTime;
+        Runnable mCallback;
+    }
+
+    private static long showTime() {
+        return showTime(SystemClock.elapsedRealtime());
+    }
+
+    private static long showTime(MyEvent event) {
+        return showTime(event.mTriggerTime);
+    }
+
+    private static long showTime(long time) {
+        return (time / 60 / 1000 % 10000);
+    }
 
     // TODO: clean up pending SipSession(s) periodically
 }

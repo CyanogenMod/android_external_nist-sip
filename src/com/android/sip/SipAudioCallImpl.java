@@ -101,10 +101,8 @@ public class SipAudioCallImpl implements SipAudioCall {
     }
 
     public void close() {
-        if (mSipSession != null) {
-            stopCall();
-            mSipSession = null;
-        }
+        mSipSession = null;
+        stopCall();
         stopRingbackTone();
         stopRinging();
     }
@@ -221,11 +219,9 @@ public class SipAudioCallImpl implements SipAudioCall {
             public void onError(ISipSession session, String className,
                     String message) {
                 Log.d(TAG, "sip session error: " + className + ": " + message);
-                stopCall();
-                stopRingbackTone();
-                stopRinging();
+                // don't stop RTP session on SIP error
+                // TODO: what to do if call is on hold
                 mSipSession = null;
-                mHolding = false;
                 if (mListener != null) {
                     try {
                         mListener.onError(SipAudioCallImpl.this,

@@ -32,8 +32,6 @@ import java.util.EventObject;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.TooManyListenersException;
 
 import javax.sip.ClientTransaction;
@@ -1041,8 +1039,12 @@ class SipSessionGroup implements SipListener {
     private class AutoRegistrationProcess extends SipSessionAdapter {
         private SipSessionImpl mSession;
         private ISipSessionListener mListener;
-        private Timer mTimer;
+        private WakeupTimer mTimer;
         private int mBackoff = 1;
+
+        private String getAction() {
+            return toString();
+        }
 
         public void start(ISipSessionListener listener) {
             mListener = listener;
@@ -1056,13 +1058,14 @@ class SipSessionGroup implements SipListener {
 
         public void stop() {
             if (mTimer != null) {
-                mTimer.cancel();
+                mTimer.stop();
                 mTimer = null;
             }
             mSession = null;
         }
 
         private void register() {
+            Log.d(TAG, "  ~~~ registering");
             synchronized (SipSessionGroup.this) {
                 if (!isClosed()) mSession.register(EXPIRY_TIME);
             }
@@ -1070,13 +1073,15 @@ class SipSessionGroup implements SipListener {
 
         private void scheduleNextRegistration(int duration) {
             if (duration > 0) {
-                if (mTimer == null) mTimer = new Timer();
+                if (mTimer == null) {
+                    mTimer = WakeupTimer.Factory.getInstance().createTimer();
+                }
                 Log.d(TAG, "Refresh registration " + duration + "s later.");
-                mTimer.schedule(new TimerTask() {
+                mTimer.set(duration * 1000L, new Runnable() {
                             public void run() {
                                 register();
                             }
-                        }, duration * 1000L);
+                        });
             } else {
                 Log.d(TAG, "Refresh registration right away");
                 register();
