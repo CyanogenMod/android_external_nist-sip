@@ -26,5 +26,7 @@ public interface RtpSession {
     void start(int remoteSampleRate, DatagramSocket connectedSocket)
             throws IOException ;
     void stop();
+    void toggleMute();
+    boolean isMuted();
     void sendDtmf();
 }

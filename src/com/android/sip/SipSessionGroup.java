@@ -1052,6 +1052,9 @@ class SipSessionGroup implements SipListener {
                 Log.v(TAG, "start AutoRegistrationProcess...");
                 mBackoff = 1;
                 mSession = (SipSessionImpl) createSession(this);
+                // start unregistration to clear up old registration at server
+                // TODO: when rfc5626 is deployed, use reg-id and sip.instance
+                // in registration to avoid adding duplicate entries to server
                 mSession.unregister();
             }
         }

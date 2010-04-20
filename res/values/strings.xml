@@ -34,6 +34,8 @@
     <string name="menu_send_dtmf">Send DTMF_1</string>
     <string name="menu_speaker_mode">Speaker ON</string>
     <string name="menu_incall_mode">Speaker OFF</string>
+    <string name="menu_mute">Mute</string>
+    <string name="menu_unmute">Unmute</string>
     <string name="field_not_set">%s is not set.</string>
     <string name="field_not_set_optional">%s is not set. (optional)</string>
 

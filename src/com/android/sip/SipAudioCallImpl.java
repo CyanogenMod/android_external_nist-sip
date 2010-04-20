@@ -362,6 +362,16 @@ public class SipAudioCallImpl implements SipAudioCall {
         return sdpBuilder;
     }
 
+    public void toggleMute() {
+        if (mRtpSession != null) {
+            mRtpSession.toggleMute();
+        }
+    }
+
+    public boolean isMuted() {
+        return ((mRtpSession != null) ? mRtpSession.isMuted() : false);
+    }
+
     public void setInCallMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setMode(AudioManager.MODE_IN_CALL);
@@ -370,6 +380,13 @@ public class SipAudioCallImpl implements SipAudioCall {
     public void setSpeakerMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setMode(AudioManager.MODE_NORMAL);
+    }
+
+    public void sendDtmf() {
+        if (mSipSession == null) return;
+        if (SipSessionState.IN_CALL == getState()) {
+            mRtpSession.sendDtmf();
+        }
     }
 
     private int getCodecId(SdpSessionDescription sd) {
@@ -408,7 +425,7 @@ public class SipAudioCallImpl implements SipAudioCall {
                 + ", peer=" + peerMediaAddress + ":" + peerMediaPort);
     }
 
-    public void stopCall() {
+    private void stopCall() {
         Log.d(TAG, "stop audiocall");
         if (mRtpSession != null) {
             mRtpSession.stop();
@@ -416,13 +433,6 @@ public class SipAudioCallImpl implements SipAudioCall {
             mMediaSocket = null;
         }
         setSpeakerMode();
-    }
-
-    public void sendDtmf() {
-        if (mSipSession == null) return;
-        if (SipSessionState.IN_CALL == getState()) {
-            mRtpSession.sendDtmf();
-        }
     }
 
     private int getLocalMediaPort() {

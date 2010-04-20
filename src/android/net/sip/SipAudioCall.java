@@ -86,7 +86,8 @@ public interface SipAudioCall {
     void continueCall() throws SipException;
     void setInCallMode();
     void setSpeakerMode();
-    void stopCall();
+    void toggleMute();
+    boolean isMuted();
     void sendDtmf();
     SipSessionState getState();
     ISipSession getSipSession();

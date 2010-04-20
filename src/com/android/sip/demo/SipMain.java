@@ -61,6 +61,7 @@ public class SipMain extends PreferenceActivity
     private static final int MENU_HANGUP = Menu.FIRST + 2;
     private static final int MENU_SEND_DTMF_1 = Menu.FIRST + 3;
     private static final int MENU_SPEAKER_MODE = Menu.FIRST + 4;
+    private static final int MENU_MUTE = Menu.FIRST + 5;
 
     private Preference mCallStatus;
     private EditTextPreference mPeerUri;
@@ -432,6 +433,9 @@ public class SipMain extends PreferenceActivity
         }
     }
 
+    private void toggleMute() {
+        mAudioCall.toggleMute();
+    }
 
     private void sendDtmf() {
         mAudioCall.sendDtmf();
@@ -467,6 +471,7 @@ public class SipMain extends PreferenceActivity
         SipSessionState state = ((mAudioCall == null) || mChanged)
                 ? SipSessionState.READY_TO_CALL
                 : getCallState();
+        boolean muted = (mAudioCall == null) ? false : mAudioCall.isMuted();
 
         Log.v(TAG, "onPrepareOptionsMenu(), status=" + state);
         menu.clear();
@@ -479,6 +484,8 @@ public class SipMain extends PreferenceActivity
             menu.add(0, MENU_SPEAKER_MODE, 0, (mSpeakerMode ?
                     R.string.menu_incall_mode : R.string.menu_speaker_mode));
             menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
+            menu.add(0, MENU_MUTE, 0,
+                    (muted ? R.string.menu_unmute : R.string.menu_mute));
             /* pass through */
         default:
             menu.add(0, MENU_HANGUP, 0, R.string.menu_hangup);
@@ -513,6 +520,10 @@ public class SipMain extends PreferenceActivity
 
             case MENU_SEND_DTMF_1:
                 sendDtmf();
+                return true;
+
+            case MENU_MUTE:
+                toggleMute();
                 return true;
         }
         return super.onOptionsItemSelected(item);

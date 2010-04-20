@@ -106,6 +106,14 @@ class RtpAudioSession implements RtpSession {
         }
     }
 
+    public void toggleMute() {
+        if (mRecordTask != null) mRecordTask.toggleMute();
+    }
+
+    public boolean isMuted() {
+        return ((mRecordTask != null) ? mRecordTask.isMuted() : false);
+    }
+
     public void sendDtmf() {
         mSendDtmf = true;
     }
@@ -218,13 +226,21 @@ class RtpAudioSession implements RtpSession {
                     virtualClock += cyclePeriod;
                     long now = System.currentTimeMillis();
                     long late = now - virtualClock;
-                    if (late < 0) virtualClock = now;
-
-                    delta = delta * 0.96f + late * 0.04f;
-                    if (delta > MAX_ALLOWABLE_LATENCY) {
-                        delta = MAX_ALLOWABLE_LATENCY;
+                    if ((late < 0) || (late > 1000)) {
+                        if (late > 1000) {
+                            Log.d(TAG, "  large delay detected: " + late
+                                    + ", been muted?");
+                        }
+                        virtualClock = now;
+                        late = 0;
+                        delta = 0;
+                    } else {
+                        delta = delta * 0.96f + late * 0.04f;
+                        if (delta > MAX_ALLOWABLE_LATENCY) {
+                            delta = MAX_ALLOWABLE_LATENCY;
+                        }
+                        late -= (long) delta;
                     }
-                    late -= (long) delta;
 
                     if (late  > 100) {
                         // drop
@@ -271,6 +287,7 @@ class RtpAudioSession implements RtpSession {
     private class RecordTask implements Runnable {
         private int mSampleRate;
         private int mFrameSize;
+        private boolean mMuted = false;
 
         RecordTask(int sampleRate, int frameSize) {
             mSampleRate = sampleRate;
@@ -281,6 +298,14 @@ class RtpAudioSession implements RtpSession {
             Log.d(TAG, "start RecordTask, connect to " + addr + ":" + port);
             mSocket.connect(addr, port);
             new Thread(this).start();
+        }
+
+        void toggleMute() {
+            mMuted = !mMuted;
+        }
+
+        boolean isMuted() {
+            return mMuted;
         }
 
         private void adjustMicGain(short[] buf, int len, int factor) {
@@ -325,6 +350,7 @@ class RtpAudioSession implements RtpSession {
 
             while (mRunning) {
                 int count = recorder.read(recordBuffer, 0, recordBufferSize);
+                if (mMuted) continue;
 
                 // TODO: remove the mic gain if the issue is fixed on Passion.
                 adjustMicGain(recordBuffer, count, 16);
@@ -352,6 +378,7 @@ class RtpAudioSession implements RtpSession {
                     + ((double) (now - startTime) / sendCount));
             Log.d(TAG, "stop sound recording...");
             recorder.stop();
+            mMuted = false;
         }
     }
 
