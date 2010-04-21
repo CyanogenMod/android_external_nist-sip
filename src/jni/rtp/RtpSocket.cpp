@@ -33,26 +33,21 @@
 
 static jfieldID gNative;
 
-struct RtpSocket {
+struct RtpSocket
+{
     int mFd;
     int mFamily;
     sockaddr_storage mRemote;
 
-    RtpSocket(int fd, sockaddr_storage *local) {
+    RtpSocket(int fd, sockaddr_storage *local)
+    {
         mFd = fd;
         mFamily = local->ss_family;
         mRemote.ss_family = ~mFamily;
     }
 
-    ~RtpSocket() {
-        close(mFd);
-    }
+    ~RtpSocket() { close(mFd); }
 };
-
-static void throwSocketException(JNIEnv *env, int error)
-{
-    jniThrowException(env, "java/net/SocketException", strerror(error));
-}
 
 //------------------------------------------------------------------------------
 
@@ -97,8 +92,13 @@ int receive(RtpSocket *rtpSocket, void *buffer, int length, timeval *deadline)
             return 0;
         }
 
-        timeout.tv_sec = remain / 1000000;
-        timeout.tv_usec = remain % 1000000;
+        if (remain < 1000000) {
+            timeout.tv_sec = 0;
+            timeout.tv_usec = remain;
+        } else {
+            timeout.tv_sec = remain / 1000000;
+            timeout.tv_usec = remain - timeout.tv_sec * 1000000;
+        }
         if (setsockopt(rtpSocket->mFd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
             sizeof(timeout)) != 0) {
             return -1;
@@ -114,6 +114,11 @@ int receive(RtpSocket *rtpSocket, void *buffer, int length, timeval *deadline)
 }
 
 //------------------------------------------------------------------------------
+
+static void throwSocketException(JNIEnv *env, int error)
+{
+    jniThrowException(env, "java/net/SocketException", strerror(error));
+}
 
 static int parse(JNIEnv *env, jstring jAddress, jint port, sockaddr_storage *ss)
 {

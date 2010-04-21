@@ -20,19 +20,17 @@ import java.net.InetAddress;
 import java.net.SocketException;
 
 /**
- * This class represents a UDP socket carrying RTP packets. Each RtpSocket can
- * only carry one stream, and it must be associated with a remote host before
- * creating the stream.
+ * The RtpSocket class represents a UDP socket carrying RTP packets. The network
+ * port of the local host is assigned automatically to conform with RFC 3550.
  */
 public class RtpSocket {
     private int mNative;
-    private boolean mOccupied = false;
-
     private final InetAddress mLocalAddress;
     private final int mLocalPort;
 
     private InetAddress mRemoteAddress;
     private int mRemotePort = -1;
+    private boolean mInUse = false;
 
     static {
         System.loadLibrary("siprtp");
@@ -52,10 +50,13 @@ public class RtpSocket {
     private native int create(String address) throws SocketException;
 
     synchronized void occupy() {
-        if (mOccupied) {
-            throw new IllegalStateException("RtpSocket is already occupied");
+        if (mRemoteAddress == null) {
+            throw new IllegalStateException("RtpSocket is not associated");
         }
-        mOccupied = true;
+        if (mInUse) {
+            throw new IllegalStateException("RtpSocket is already in use");
+        }
+        mInUse = true;
     }
 
     /**
