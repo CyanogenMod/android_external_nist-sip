@@ -56,6 +56,7 @@ import javax.sip.SipException;
  */
 public class SipAudioCallImpl implements SipAudioCall {
     private static final String TAG = SipAudioCallImpl.class.getSimpleName();
+    private static final String AUDIO = "audio";
 
     private Context mContext;
     private SipProfile mLocalProfile;
@@ -395,7 +396,7 @@ public class SipAudioCallImpl implements SipAudioCall {
                 RtpFactory.getSystemSupportedAudioSessions()) {
             acceptableFormats.add(session.getCodecId());
         }
-        for (int id : sd.getMediaFormats()) {
+        for (int id : sd.getMediaFormats(AUDIO)) {
             if (acceptableFormats.contains(id)) return id;
         }
         Log.w(TAG, "no common codec is found, use 0");
@@ -403,9 +404,9 @@ public class SipAudioCallImpl implements SipAudioCall {
     }
 
     private void startCall(SdpSessionDescription sd) {
-        String peerMediaAddress = sd.getPeerMediaAddress();
+        String peerMediaAddress = sd.getPeerMediaAddress(AUDIO);
         // TODO: handle multiple media fields
-        int peerMediaPort = sd.getPeerMediaPort();
+        int peerMediaPort = sd.getPeerMediaPort(AUDIO);
         Log.i(TAG, "start audiocall " + peerMediaAddress + ":" + peerMediaPort);
 
         int localPort = getLocalMediaPort();
