@@ -413,6 +413,7 @@ class SipHelper {
     }
 
     public static String getCallId(EventObject event) {
+        if (event == null) return null;
         if (event instanceof RequestEvent) {
             return getCallId(((RequestEvent) event).getRequest());
         } else if (event instanceof ResponseEvent) {

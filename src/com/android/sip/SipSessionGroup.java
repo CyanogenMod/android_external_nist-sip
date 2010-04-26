@@ -28,6 +28,7 @@ import android.util.Log;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.text.ParseException;
+import java.util.Collection;
 import java.util.EventObject;
 import java.util.HashMap;
 import java.util.Map;
@@ -64,7 +65,7 @@ import javax.sip.message.Response;
  * Manages {@link ISipSession}'s for a SIP account.
  */
 class SipSessionGroup implements SipListener {
-    private static final String TAG = SipSessionGroup.class.getSimpleName();
+    private static final String TAG = "SipSession";
     private static final int EXPIRY_TIME = 3600;
     private static final int SHORT_EXPIRY_TIME = 10;
     private static final int MIN_EXPIRY_TIME = 60;
@@ -121,32 +122,42 @@ class SipSessionGroup implements SipListener {
     }
 
     public synchronized void close() {
+        mSessionMap.clear();
+        mAutoRegistration.stop();
         if (mSipStack != null) {
             mSipStack.stop();
             mSipStack = null;
+            mSipHelper = null;
         }
-        mSessionMap.clear();
-        mAutoRegistration.stop();
     }
 
     public synchronized boolean isClosed() {
         return (mSipStack == null);
     }
 
-    public synchronized void onNetworkDisconnected() {
-        for (SipSessionImpl session : mSessionMap.values()) {
+    public void onNetworkDisconnected() {
+        Collection<SipSessionImpl> sessionCollection;
+        synchronized (this) {
+            sessionCollection = mSessionMap.values();
+            close();
+        }
+
+        for (SipSessionImpl session : sessionCollection) {
             session.onNetworkDisconnected();
         }
-        close();
     }
 
-    public synchronized void openToReceiveCalls(ISipSessionListener listener)
-            throws SipException {
+    private synchronized void createCallReceiver(ISipSessionListener listener) {
         if (mCallReceiverSession == null) {
             mCallReceiverSession = new SipSessionCallReceiverImpl(listener);
         } else {
             mCallReceiverSession.setListener(listener);
         }
+    }
+
+    public void openToReceiveCalls(ISipSessionListener listener)
+            throws SipException {
+        createCallReceiver(listener);
         mAutoRegistration.start(listener);
     }
 
@@ -236,15 +247,18 @@ class SipSessionGroup implements SipListener {
 
     private void process(EventObject event) {
         SipSessionImpl session = getSipSession(event);
-        try {
-            if ((session == null) || !session.process(event)) {
-                Log.d(TAG, "event not processed: " + event);
-            } else {
-                Log.d(TAG, " ~~~~~   new state: " + session.mState);
+
+        synchronized (session) {
+            try {
+                if ((session == null) || !session.process(event)) {
+                    Log.d(TAG, "event not processed: " + event);
+                } else {
+                    Log.d(TAG, " ~~~~~   new state: " + session.mState);
+                }
+            } catch (Throwable e) {
+                Log.e(TAG, "event process error: " + event, e);
+                session.onError(e);
             }
-        } catch (Throwable e) {
-            Log.e(TAG, "event process error: " + event, e);
-            session.onError(e);
         }
     }
 
@@ -258,7 +272,7 @@ class SipSessionGroup implements SipListener {
                     + log(evt));
             if (isRequestEvent(Request.INVITE, evt)) {
                 RequestEvent event = (RequestEvent) evt;
-                SipSessionImpl newSession = new SipSessionImpl(mListener);
+                SipSessionImpl newSession = new SipSessionImpl(mProxy);
                 newSession.mServerTransaction = mSipHelper.sendRinging(event);
                 newSession.mDialog = newSession.mServerTransaction.getDialog();
                 newSession.mInviteReceived = event;
@@ -267,7 +281,8 @@ class SipSessionGroup implements SipListener {
                 newSession.mPeerSessionDescription =
                         event.getRequest().getRawContent();
                 addSipSession(newSession);
-                newSession.onRinging();
+                mProxy.onRinging(newSession, newSession.mPeerProfile,
+                        newSession.mPeerSessionDescription);
                 return true;
             } else {
                 return false;
@@ -277,7 +292,7 @@ class SipSessionGroup implements SipListener {
 
     private class SipSessionImpl extends ISipSession.Stub {
         SipProfile mPeerProfile;
-        ISipSessionListener mListener;
+        SipSessionListenerProxy mProxy = new SipSessionListenerProxy();
         SipSessionState mState = SipSessionState.READY_TO_CALL;
         RequestEvent mInviteReceived;
         Dialog mDialog;
@@ -286,7 +301,7 @@ class SipSessionGroup implements SipListener {
         byte[] mPeerSessionDescription;
 
         public SipSessionImpl(ISipSessionListener listener) {
-            mListener = listener;
+            setListener(listener);
         }
 
         private void reset() {
@@ -331,12 +346,12 @@ class SipSessionGroup implements SipListener {
         }
 
         public void setListener(ISipSessionListener listener) {
-            synchronized (SipSessionGroup.this) {
-                mListener = listener;
-            }
+            mProxy.setListener((listener instanceof SipSessionListenerProxy)
+                    ? ((SipSessionListenerProxy) listener).getListener()
+                    : listener);
         }
 
-        public void makeCall(SipProfile peerProfile,
+        public synchronized void makeCall(SipProfile peerProfile,
                 SessionDescription sessionDescription) {
             try {
                 process(new MakeCallCommand(peerProfile, sessionDescription));
@@ -345,7 +360,8 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void answerCall(SessionDescription sessionDescription) {
+        public synchronized void answerCall(
+                SessionDescription sessionDescription) {
             try {
                 process(new MakeCallCommand(mPeerProfile, sessionDescription));
             } catch (SipException e) {
@@ -353,7 +369,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void endCall() {
+        public synchronized void endCall() {
             try {
                 process(END_CALL);
             } catch (SipException e) {
@@ -362,7 +378,8 @@ class SipSessionGroup implements SipListener {
         }
 
         // http://www.tech-invite.com/Ti-sip-service-1.html#fig5
-        public void changeCall(SessionDescription sessionDescription) {
+        public synchronized void changeCall(
+                SessionDescription sessionDescription) {
             try {
                 process(new MakeCallCommand(mPeerProfile, sessionDescription));
             } catch (SipException e) {
@@ -370,7 +387,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void register(int duration) {
+        public synchronized void register(int duration) {
             try {
                 process(new RegisterCommand(duration));
             } catch (SipException e) {
@@ -378,7 +395,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void unregister() {
+        public synchronized void unregister() {
             try {
                 process(DEREGISTER);
             } catch (SipException e) {
@@ -400,50 +417,49 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public boolean process(EventObject evt) throws SipException {
-            synchronized (SipSessionGroup.this) {
-                Log.d(TAG, " ~~~~~   " + this + ": " + mState + ": processing "
-                        + log(evt));
-                boolean processed;
+        public synchronized boolean process(EventObject evt)
+                throws SipException {
+            Log.d(TAG, " ~~~~~   " + this + ": " + mState + ": processing "
+                    + log(evt));
+            boolean processed;
 
-                switch (mState) {
-                case REGISTERING:
-                case DEREGISTERING:
-                    processed = registeringToReady(evt);
-                    break;
-                case READY_TO_CALL:
-                    processed = readyForCall(evt);
-                    break;
-                case INCOMING_CALL:
-                    processed = incomingCall(evt);
-                    break;
-                case INCOMING_CALL_ANSWERING:
-                    processed = incomingCallToInCall(evt);
-                    break;
-                case OUTGOING_CALL:
-                case OUTGOING_CALL_RING_BACK:
-                    processed = outgoingCall(evt);
-                    break;
-                case OUTGOING_CALL_CANCELING:
-                    processed = outgoingCallToReady(evt);
-                    break;
-                case IN_CALL:
-                    processed = inCall(evt);
-                    break;
-                case IN_CALL_ANSWERING:
-                    processed = inCallAnsweringToInCall(evt);
-                    break;
-                case IN_CALL_CHANGING:
-                    processed = inCallChanging(evt);
-                    break;
-                case IN_CALL_CHANGING_CANCELING:
-                    processed = inCallChangingToInCall(evt);
-                    break;
-                default:
-                    processed = false;
-                }
-                return (processed || processExceptions(evt));
+            switch (mState) {
+            case REGISTERING:
+            case DEREGISTERING:
+                processed = registeringToReady(evt);
+                break;
+            case READY_TO_CALL:
+                processed = readyForCall(evt);
+                break;
+            case INCOMING_CALL:
+                processed = incomingCall(evt);
+                break;
+            case INCOMING_CALL_ANSWERING:
+                processed = incomingCallToInCall(evt);
+                break;
+            case OUTGOING_CALL:
+            case OUTGOING_CALL_RING_BACK:
+                processed = outgoingCall(evt);
+                break;
+            case OUTGOING_CALL_CANCELING:
+                processed = outgoingCallToReady(evt);
+                break;
+            case IN_CALL:
+                processed = inCall(evt);
+                break;
+            case IN_CALL_ANSWERING:
+                processed = inCallAnsweringToInCall(evt);
+                break;
+            case IN_CALL_CHANGING:
+                processed = inCallChanging(evt);
+                break;
+            case IN_CALL_CHANGING_CANCELING:
+                processed = inCallChangingToInCall(evt);
+                break;
+            default:
+                processed = false;
             }
+            return (processed || processExceptions(evt));
         }
 
         private boolean processExceptions(EventObject evt) throws SipException {
@@ -496,7 +512,7 @@ class SipSessionGroup implements SipListener {
             case REGISTERING:
             case DEREGISTERING:
                 reset();
-                onRegistrationTimeout();
+                mProxy.onRegistrationTimeout(this);
                 break;
             case INCOMING_CALL:
             case INCOMING_CALL_ANSWERING:
@@ -571,7 +587,7 @@ class SipSessionGroup implements SipListener {
                 mDialog = mClientTransaction.getDialog();
                 addSipSession(this);
                 mState = SipSessionState.OUTGOING_CALL;
-                onCalling();
+                mProxy.onCalling(this);
                 return true;
             } else if (evt instanceof RegisterCommand) {
                 int duration = ((RegisterCommand) evt).getDuration();
@@ -642,7 +658,7 @@ class SipSessionGroup implements SipListener {
                 case Response.RINGING:
                     if (mState == SipSessionState.OUTGOING_CALL) {
                         mState = SipSessionState.OUTGOING_CALL_RING_BACK;
-                        onRingingBack();
+                        mProxy.onRingingBack(this);
                     }
                     return true;
                 case Response.OK:
@@ -655,6 +671,10 @@ class SipSessionGroup implements SipListener {
                             (ResponseEvent)evt, mLocalProfile);
                     mDialog = mClientTransaction.getDialog();
                     addSipSession(this);
+                    return true;
+                case Response.BUSY_HERE:
+                    reset();
+                    mProxy.onCallBusy(this);
                     return true;
                 default:
                     if (statusCode >= 400) {
@@ -721,7 +741,7 @@ class SipSessionGroup implements SipListener {
                 mSipHelper.sendReInviteOk(event, mLocalProfile);
                 mState = SipSessionState.IN_CALL_ANSWERING;
                 mPeerSessionDescription = event.getRequest().getRawContent();
-                onCallChanged(mPeerSessionDescription);
+                mProxy.onCallChanged(this, mPeerSessionDescription);
                 return true;
             } else if (isRequestEvent(Request.BYE, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt, Response.OK);
@@ -812,12 +832,12 @@ class SipSessionGroup implements SipListener {
 
         private void establishCall() {
             mState = SipSessionState.IN_CALL;
-            onCallEstablished(mPeerSessionDescription);
+            mProxy.onCallEstablished(this, mPeerSessionDescription);
         }
 
         private void endCallNormally() {
             reset();
-            onCallEnded();
+            mProxy.onCallEnded(this);
         }
 
         private void endCallOnError(Throwable throwable) {
@@ -825,106 +845,18 @@ class SipSessionGroup implements SipListener {
             onError(throwable);
         }
 
-        private void onCalling() {
-            if (mListener == null) return;
-            try {
-                mListener.onCalling(this);
-            } catch (Throwable t) {
-                Log.w(TAG, "onCalling(): " + t);
-            }
-        }
-
-        private void onRinging() {
-            if (mListener == null) return;
-            try {
-                mListener.onRinging(this, mPeerProfile,
-                        mPeerSessionDescription);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRinging(): " + t);
-            }
-        }
-
-        private void onRingingBack() {
-            if (mListener == null) return;
-            try {
-                mListener.onRingingBack(this);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRingingBack(): " + t);
-            }
-        }
-
-        private void onCallEstablished(byte[] sessionDescription) {
-            if (mListener == null) return;
-            try {
-                mListener.onCallEstablished(this, sessionDescription);
-            } catch (Throwable t) {
-                Log.w(TAG, "onCallEstablished(): " + t);
-            }
-        }
-
-        private void onCallEnded() {
-            if (mListener == null) return;
-            try {
-                mListener.onCallEnded(this);
-            } catch (Throwable t) {
-                Log.w(TAG, "onCallEnded(): " + t);
-            }
-        }
-
-        private void onCallBusy() {
-            if (mListener == null) return;
-            try {
-                mListener.onCallBusy(this);
-            } catch (Throwable t) {
-                Log.w(TAG, "onCallBusy(): " + t);
-            }
-        }
-
-        private void onCallChanged(byte[] sessionDescription) {
-            if (mListener == null) return;
-            try {
-                mListener.onCallChanged(this, sessionDescription);
-            } catch (Throwable t) {
-                Log.w(TAG, "onCallChanged(): " + t);
-            }
-        }
-
         private void onError(Throwable exception) {
-            if (mListener == null) return;
-            try {
-                mListener.onError(this,
-                        exception.getClass().getName(), exception.getMessage());
-            } catch (Throwable t) {
-                Log.w(TAG, "onError(): " + t);
-            }
+            mProxy.onError(this, exception.getClass().getName(),
+                    exception.getMessage());
         }
 
         private void onRegistrationDone(int duration) {
-            if (mListener == null) return;
-            try {
-                mListener.onRegistrationDone(this, duration);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationDone()", t);
-            }
+            mProxy.onRegistrationDone(this, duration);
         }
 
         private void onRegistrationFailed(Throwable exception) {
-            if (mListener == null) return;
-            try {
-                mListener.onRegistrationFailed(this,
-                        exception.getClass().getName(), exception.getMessage());
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationFailed(): " + t);
-            }
-        }
-
-        private void onRegistrationTimeout() {
-            if (mListener == null) return;
-            try {
-                mListener.onRegistrationTimeout(this);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationTimeout(): " + t);
-            }
+            mProxy.onRegistrationFailed(this, exception.getClass().getName(),
+                    exception.getMessage());
         }
     }
 
@@ -1036,7 +968,8 @@ class SipSessionGroup implements SipListener {
         }
     }
 
-    private class AutoRegistrationProcess extends SipSessionAdapter {
+    private class AutoRegistrationProcess extends SipSessionAdapter
+            implements Runnable {
         private SipSessionImpl mSession;
         private ISipSessionListener mListener;
         private WakeupTimer mTimer;
@@ -1059,7 +992,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void stop() {
+        public synchronized void stop() {
             if (mTimer != null) {
                 mTimer.stop();
                 mTimer = null;
@@ -1067,28 +1000,19 @@ class SipSessionGroup implements SipListener {
             mSession = null;
         }
 
-        private void register() {
+        public void run() {
             Log.d(TAG, "  ~~~ registering");
-            synchronized (SipSessionGroup.this) {
-                if (!isClosed()) mSession.register(EXPIRY_TIME);
-            }
+            if (!isClosed()) mSession.register(EXPIRY_TIME);
         }
 
-        private void scheduleNextRegistration(int duration) {
-            if (duration > 0) {
-                if (mTimer == null) {
-                    mTimer = WakeupTimer.Factory.getInstance().createTimer();
-                }
-                Log.d(TAG, "Refresh registration " + duration + "s later.");
-                mTimer.set(duration * 1000L, new Runnable() {
-                            public void run() {
-                                register();
-                            }
-                        });
-            } else {
-                Log.d(TAG, "Refresh registration right away");
-                register();
+        private synchronized void scheduleNextRegistration(int duration) {
+            if (mTimer == null) {
+                mTimer = WakeupTimer.Factory.getInstance()
+                        .createTimer();
             }
+            Log.d(TAG, "Refresh registration " + duration + "s later.");
+            mTimer.cancel(this);
+            mTimer.set(duration * 1000L, this);
         }
 
         private int backoffDuration() {
@@ -1117,7 +1041,12 @@ class SipSessionGroup implements SipListener {
                 duration -= MIN_EXPIRY_TIME;
                 if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
             }
-            scheduleNextRegistration(duration);
+            if (duration <= 0) {
+                Log.d(TAG, "Refresh registration immediately");
+                run();
+            } else {
+                scheduleNextRegistration(duration);
+            }
         }
 
         @Override
