@@ -38,8 +38,6 @@ import javax.sip.SipException;
 
 public class SdpSessionDescription extends SessionDescription {
     private SessionDescriptionImpl mSessionDescription;
-    private String mPeerMediaAddress;
-    private int mPeerMediaPort;
 
     public static class Builder {
         private SdpSessionDescription mSdp = new SdpSessionDescription();
@@ -158,23 +156,55 @@ public class SdpSessionDescription extends SessionDescription {
         } catch (ParseException e) {
             throw new SdpException(e.toString(), e);
         }
-        init();
+        verify();
     }
 
     public SdpSessionDescription(byte[] content) throws SdpException {
         this(new String(content));
     }
 
-    public String getPeerMediaAddress() {
-        return mPeerMediaAddress;
+    private void verify() throws SdpException {
+        // make sure the syntax is correct over the fields we're interested in
+        Vector<MediaDescription> descriptions = (Vector<MediaDescription>)
+                mSessionDescription.getMediaDescriptions(false);
+        for (MediaDescription md : descriptions) {
+            md.getMedia().getMediaPort();
+            Connection connection = md.getConnection();
+            if (connection != null) connection.getAddress();
+            md.getMedia().getFormats();
+        }
+        Connection connection = mSessionDescription.getConnection();
+        if (connection != null) connection.getAddress();
     }
 
-    public int getPeerMediaPort() {
-        return mPeerMediaPort;
+    public String getPeerMediaAddress(String type) {
+        try {
+            MediaDescription md = getMediaDescription(type);
+            Connection connection = md.getConnection();
+            if (connection == null) {
+                connection = mSessionDescription.getConnection();
+            }
+            return ((connection == null) ? null : connection.getAddress());
+        } catch (SdpException e) {
+            // should not occur
+            return null;
+        }
     }
 
-    public List<Integer> getMediaFormats() {
-        MediaDescription md = getMediaDescription();
+    public int getPeerMediaPort(String type) {
+        try {
+            MediaDescription md = getMediaDescription(type);
+            return md.getMedia().getMediaPort();
+        } catch (SdpException e) {
+            // should not occur
+            return -1;
+        }
+    }
+
+    public List<Integer> getMediaFormats(String type) {
+        MediaDescription md = getMediaDescription(type);
+        if (md == null) return new ArrayList<Integer>();
+
         Vector<String> formatVector = (md == null)
                 ? null
                 : md.getMedia().getFormats();
@@ -190,26 +220,26 @@ public class SdpSessionDescription extends SessionDescription {
         return formats;
     }
 
-    private void init() throws SdpException {
-        MediaDescription md = getMediaDescription();
-        mPeerMediaPort = md.getMedia().getMediaPort();
-
-        Connection connection = md.getConnection();
-        if (connection == null) {
-            connection = mSessionDescription.getConnection();
+    public MediaDescription getMediaDescription(String typeWanted) {
+        MediaDescription[] all = getMediaDescriptions();
+        if ((all == null) || (all.length == 0)) return null;
+        for (MediaDescription md : all) {
+            String type = md.getMedia().getMedia();
+            if (type.equalsIgnoreCase(typeWanted)) return md;
         }
-        mPeerMediaAddress = connection.getAddress();
+        return null;
     }
 
-    private MediaDescription getMediaDescription() {
+    public MediaDescription[] getMediaDescriptions() {
         try {
-            Vector vector = mSessionDescription.getMediaDescriptions(false);
-            // FIXME: how to handle multiple media descriptions
-            return (MediaDescription) vector.firstElement();
+            Vector<MediaDescription> descriptions = (Vector<MediaDescription>)
+                    mSessionDescription.getMediaDescriptions(false);
+            MediaDescription[] all = new MediaDescription[descriptions.size()];
+            return descriptions.toArray(all);
         } catch (SdpException e) {
             android.util.Log.e("SdpSessionDescription", e.toString());
-            return null;
         }
+        return null;
     }
 
     public String getType() {
