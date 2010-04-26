@@ -410,18 +410,15 @@ public class SipServiceBinder extends Service {
         public synchronized void cancel(Runnable callback) {
             if (stopped()) return;
 
+            MyEvent firstEvent = mEventQueue.peek();
             for (Iterator<MyEvent> iter = mEventQueue.iterator();
                     iter.hasNext();) {
                 MyEvent event = iter.next();
-                if (event.mCallback == callback) {
-                    boolean isFirstEvent = (event == mEventQueue.peek());
-                    iter.remove();
-                    if (isFirstEvent) {
-                        mAlarmManager.cancel(event.mPendingIntent);
-                        scheduleNext();
-                    }
-                    return;
-                }
+                if (event.mCallback == callback) iter.remove();
+            }
+            if ((firstEvent != null) && (firstEvent.mCallback == callback)) {
+                mAlarmManager.cancel(firstEvent.mPendingIntent);
+                scheduleNext();
             }
         }
 
