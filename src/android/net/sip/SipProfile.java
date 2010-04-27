@@ -22,6 +22,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
 
+import java.io.Serializable;
 import java.text.ParseException;
 import javax.sip.InvalidArgumentException;
 import javax.sip.ListeningPoint;
@@ -34,12 +35,15 @@ import javax.sip.address.URI;
 
 /**
  */
-public class SipProfile implements UserCredentials, Parcelable {
+public class SipProfile implements UserCredentials, Parcelable, Serializable {
+    private static final long serialVersionUID = 1L;
+    private static final int DEFAULT_PORT = 5060;
     private Address mAddress;
-    private String mOutboundProxy;
+    private String mProxyAddress;
     private String mPassword;
     private String mDomain;
     private String mProtocol = ListeningPoint.UDP;
+    private String mProfileName;
 
     public static final Parcelable.Creator<SipProfile> CREATOR =
             new Parcelable.Creator<SipProfile>() {
@@ -57,7 +61,7 @@ public class SipProfile implements UserCredentials, Parcelable {
         private SipProfile mProfile = new SipProfile();
         private SipURI mUri;
         private String mDisplayName;
-        private String mOutboundProxy;
+        private String mProxyAddress;
 
         {
             try {
@@ -90,6 +94,11 @@ public class SipProfile implements UserCredentials, Parcelable {
                     : "sip:" + uriString);
         }
 
+        public Builder setProfileName(String name) {
+            mProfile.mProfileName = name;
+            return this;
+        }
+
         public Builder setPassword(String password) {
             mUri.setUserPassword(password);
             return this;
@@ -112,7 +121,7 @@ public class SipProfile implements UserCredentials, Parcelable {
         }
 
         public Builder setOutboundProxy(String outboundProxy) {
-            mOutboundProxy = outboundProxy;
+            mProxyAddress = outboundProxy;
             return this;
         }
 
@@ -128,11 +137,10 @@ public class SipProfile implements UserCredentials, Parcelable {
             try {
                 mProfile.mAddress = mAddressFactory.createAddress(
                         mDisplayName, mUri);
-                if (!TextUtils.isEmpty(mOutboundProxy)) {
+                if (!TextUtils.isEmpty(mProxyAddress)) {
                     SipURI uri = (SipURI)
-                            mAddressFactory.createURI(fix(mOutboundProxy));
-                    mProfile.mOutboundProxy = uri.getHost() + ":"
-                            + uri.getPort() + "/UDP";
+                            mAddressFactory.createURI(fix(mProxyAddress));
+                    mProfile.mProxyAddress = uri.getHost();
                 }
             } catch (ParseException e) {
                 // must not occur
@@ -147,18 +155,20 @@ public class SipProfile implements UserCredentials, Parcelable {
 
     private SipProfile(Parcel in) {
         mAddress = (Address) in.readSerializable();
-        mOutboundProxy = in.readString();
+        mProxyAddress = in.readString();
         mPassword = in.readString();
         mDomain = in.readString();
         mProtocol = in.readString();
+        mProfileName = in.readString();
     }
 
     public void writeToParcel(Parcel out, int flags) {
         out.writeSerializable(mAddress);
-        out.writeString(mOutboundProxy);
+        out.writeString(mProxyAddress);
         out.writeString(mPassword);
         out.writeString(mDomain);
         out.writeString(mProtocol);
+        out.writeString(mProfileName);
     }
 
     public int describeContents() {
@@ -195,7 +205,8 @@ public class SipProfile implements UserCredentials, Parcelable {
     }
 
     public int getPort() {
-        return getUri().getPort();
+        int port = getUri().getPort();
+        return (port == -1) ? DEFAULT_PORT : port;
     }
 
     public String getProtocol() {
@@ -203,6 +214,16 @@ public class SipProfile implements UserCredentials, Parcelable {
     }
 
     public String getOutboundProxy() {
-        return mOutboundProxy;
+        if (TextUtils.isEmpty(mProxyAddress)) return mProxyAddress;
+        return mProxyAddress + ":" + getPort()
+                + "/" + mProtocol;
+    }
+
+    public String getProxyAddress() {
+        return mProxyAddress;
+    }
+
+    public String getProfileName() {
+        return mProfileName;
     }
 }
