@@ -18,6 +18,8 @@ package com.android.sip.media;
 
 import android.util.Log;
 
+import java.net.DatagramSocket;
+
 public class RtpFactory {
     public static RtpSession[] getSystemSupportedAudioSessions() {
         return new RtpSession[] {
@@ -26,6 +28,18 @@ public class RtpFactory {
 
     // returns null if codecId is not supported by the system
     public static RtpSession createAudioSession(int codecId) {
+        return create(codecId);
+    }
+
+    public static RtpSession createAudioSession(
+            int codecId, int remoteSampleRate, DatagramSocket socket) {
+        RtpAudioSession s = create(codecId);
+        if (s == null) return null;
+        s.set(remoteSampleRate, socket);
+        return s;
+    }
+
+    private static RtpAudioSession create(int codecId) {
         for (RtpSession s : getSystemSupportedAudioSessions()) {
             if (s.getCodecId() == codecId) {
                 return new RtpAudioSession(codecId);

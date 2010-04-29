@@ -26,6 +26,8 @@ import gov.nist.javax.sdp.fields.SessionNameField;
 import gov.nist.javax.sdp.fields.TimeField;
 import gov.nist.javax.sdp.parser.SDPAnnounceParser;
 
+import android.util.Log;
+
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +39,7 @@ import javax.sdp.SdpException;
 import javax.sip.SipException;
 
 public class SdpSessionDescription extends SessionDescription {
+    private static final String TAG = "SDP";
     private SessionDescriptionImpl mSessionDescription;
 
     public static class Builder {
@@ -45,6 +48,7 @@ public class SdpSessionDescription extends SessionDescription {
 
         public Builder(String sessionName) throws SdpException {
             mSessionDescription = new SessionDescriptionImpl();
+            mSdp.mSessionDescription = mSessionDescription;
             try {
                 ProtoVersionField proto = new ProtoVersionField();
                 proto.setVersion(0);
@@ -58,7 +62,7 @@ public class SdpSessionDescription extends SessionDescription {
                 session.setValue(sessionName);
                 mSessionDescription.addField(session);
             } catch (Exception e) {
-                throw new SdpException(e.toString(), e);
+                throwSdpException(e);
             }
         }
 
@@ -71,7 +75,7 @@ public class SdpSessionDescription extends SessionDescription {
                 connection.setAddress(addr);
                 mSessionDescription.addField(connection);
             } catch (Exception e) {
-                throw new SdpException(e.toString(), e);
+                throwSdpException(e);
             }
             return this;
         }
@@ -89,7 +93,7 @@ public class SdpSessionDescription extends SessionDescription {
                 origin.setAddress(address);
                 mSessionDescription.addField(origin);
             } catch (Exception e) {
-                throw new SdpException(e.toString(), e);
+                throwSdpException(e);
             }
             return this;
         }
@@ -107,15 +111,16 @@ public class SdpSessionDescription extends SessionDescription {
                 field.setMediaFormats(typeVector);
                 mSessionDescription.addField(field);
             } catch (Exception e) {
-                throw new SdpException(e.toString(), e);
+                throwSdpException(e);
             }
            return this;
         }
 
-        public Builder addMediaAttribute(String name, String value)
+        public Builder addMediaAttribute(String type, String name, String value)
                 throws SdpException {
             try {
-                if (mSessionDescription.getMediaDescriptions(false) == null) {
+                MediaDescription md = mSdp.getMediaDescription(type);
+                if (md == null) {
                     throw new SdpException("Should add media first!");
                 }
                 AttributeField attribute = new AttributeField();
@@ -123,7 +128,7 @@ public class SdpSessionDescription extends SessionDescription {
                 attribute.setValueAllowNull(value);
                 mSessionDescription.addField(attribute);
             } catch (Exception e) {
-                throw new SdpException(e.toString(), e);
+                throwSdpException(e);
             }
             return this;
         }
@@ -136,13 +141,20 @@ public class SdpSessionDescription extends SessionDescription {
                 attribute.setValueAllowNull(value);
                 mSessionDescription.addField(attribute);
             } catch (Exception e) {
-                throw new SdpException(e.toString(), e);
+                throwSdpException(e);
             }
             return this;
         }
 
+        private void throwSdpException(Exception e) throws SdpException {
+            if (e instanceof SdpException) {
+                throw (SdpException) e;
+            } else {
+                throw new SdpException(e.toString(), e);
+            }
+        }
+
         public SdpSessionDescription build() {
-            mSdp.mSessionDescription = mSessionDescription;
             return mSdp;
         }
     }
@@ -201,6 +213,29 @@ public class SdpSessionDescription extends SessionDescription {
         }
     }
 
+    private boolean containsAttribute(String type, String name) {
+        if (name == null) return false;
+        MediaDescription md = getMediaDescription(type);
+        Vector<AttributeField> v = (Vector<AttributeField>)
+                md.getAttributeFields();
+        for (AttributeField field : v) {
+            if (name.equals(field.getAttribute().getName())) return true;
+        }
+        return false;
+    }
+
+    public boolean isSendOnly(String type) {
+        boolean answer = containsAttribute(type, "sendonly");
+        Log.d(TAG, "   sendonly? " + answer);
+        return answer;
+    }
+
+    public boolean isReceiveOnly(String type) {
+        boolean answer = containsAttribute(type, "recvonly");
+        Log.d(TAG, "   recvonly? " + answer);
+        return answer;
+    }
+
     public List<Integer> getMediaFormats(String type) {
         MediaDescription md = getMediaDescription(type);
         if (md == null) return new ArrayList<Integer>();
@@ -237,7 +272,7 @@ public class SdpSessionDescription extends SessionDescription {
             MediaDescription[] all = new MediaDescription[descriptions.size()];
             return descriptions.toArray(all);
         } catch (SdpException e) {
-            android.util.Log.e("SdpSessionDescription", e.toString());
+            Log.e(TAG, "getMediaDescriptions", e);
         }
         return null;
     }

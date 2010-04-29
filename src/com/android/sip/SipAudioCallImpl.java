@@ -54,19 +54,23 @@ import javax.sip.SipException;
 /**
  * Class that handles an audio call over SIP.
  */
-public class SipAudioCallImpl implements SipAudioCall {
+public class SipAudioCallImpl extends SipSessionAdapter
+        implements SipAudioCall {
     private static final String TAG = SipAudioCallImpl.class.getSimpleName();
+    private static final boolean RELEASE_SOCKET = true;
+    private static final boolean DONT_RELEASE_SOCKET = false;
     private static final String AUDIO = "audio";
 
     private Context mContext;
     private SipProfile mLocalProfile;
     private SipAudioCall.Listener mListener;
     private ISipSession mSipSession;
-    private SdpSessionDescription mOfferSd;
+    private SdpSessionDescription mPeerSd;
 
     private RtpSession mRtpSession;
     private DatagramSocket mMediaSocket;
-    private boolean mHolding = false;
+    private boolean mChangingSession = false;
+    private boolean mInCall = false;
 
     private boolean mRingbackToneEnabled = true;
     private boolean mRingtoneEnabled = true;
@@ -80,7 +84,7 @@ public class SipAudioCallImpl implements SipAudioCall {
         mLocalProfile = localProfile;
     }
 
-    public void setListener(SipAudioCall.Listener listener) {
+    public synchronized void setListener(SipAudioCall.Listener listener) {
         mListener = listener;
         if (listener == null) return;
         try {
@@ -101,14 +105,25 @@ public class SipAudioCallImpl implements SipAudioCall {
         }
     }
 
-    public void close() {
-        mSipSession = null;
-        stopCall();
-        stopRingbackTone();
-        stopRinging();
+    public synchronized boolean isInCall() {
+        return mInCall;
     }
 
-    public SipSessionState getState() {
+    public synchronized boolean isOnHold() {
+        if (mPeerSd == null) return false;
+        return (mPeerSd.isSendOnly(AUDIO) || mPeerSd.isReceiveOnly(AUDIO));
+    }
+
+    public synchronized void close() {
+        stopCall(RELEASE_SOCKET);
+        stopRingbackTone();
+        stopRinging();
+        mSipSession = null;
+        mInCall = false;
+        mChangingSession = false;
+    }
+
+    public synchronized SipSessionState getState() {
         if (mSipSession == null) return SipSessionState.READY_TO_CALL;
         try {
             return Enum.valueOf(SipSessionState.class, mSipSession.getState());
@@ -118,186 +133,190 @@ public class SipAudioCallImpl implements SipAudioCall {
     }
 
 
-    public ISipSession getSipSession() {
+    public synchronized ISipSession getSipSession() {
         return mSipSession;
     }
 
-    private SipSessionAdapter createSipSessionListener() {
-        return new SipSessionAdapter() {
-            public void onCalling(ISipSession session) {
-                Log.d(TAG, "calling... " + session);
-                if (mListener != null) {
-                    try {
-                        mListener.onCalling(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onCalling()", t);
-                    }
-                }
+    @Override
+    public synchronized void onCalling(ISipSession session) {
+        Log.d(TAG, "calling... " + session);
+        if (mListener != null) {
+            try {
+                mListener.onCalling(SipAudioCallImpl.this);
+            } catch (Throwable t) {
+                Log.e(TAG, "onCalling()", t);
             }
-
-            public void onRingingBack(ISipSession session) {
-                Log.d(TAG, "sip call ringing back: " + session);
-                startRingbackTone();
-                if (mListener != null) {
-                    try {
-                        mListener.onRingingBack(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onRingingBack()", t);
-                    }
-                }
-            }
-
-            public void onCallEstablished(
-                    ISipSession session, byte[] sessionDescription) {
-                stopRingbackTone();
-                stopRinging();
-                try {
-                    SdpSessionDescription sd =
-                            new SdpSessionDescription(sessionDescription);
-                    Log.d(TAG, "sip call established: " + session + ": " + sd);
-                    startCall(sd);
-                } catch (SdpException e) {
-                    Log.e(TAG, "createSessionDescription()", e);
-                }
-                if (mListener != null) {
-                    try {
-                        mListener.onCallEstablished(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onCallEstablished()", t);
-                    }
-                }
-            }
-
-            public void onCallEnded(ISipSession session) {
-                Log.d(TAG, "sip call ended: " + session);
-                stopCall();
-                stopRingbackTone();
-                stopRinging();
-                mSipSession = null;
-                mHolding = false;
-                if (mListener != null) {
-                    try {
-                        mListener.onCallEnded(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onCallEnded()", t);
-                    }
-                }
-            }
-
-            public void onCallBusy(ISipSession session) {
-                Log.d(TAG, "sip call busy: " + session);
-                if (mListener != null) {
-                    try {
-                        mListener.onCallBusy(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onCallBusy()", t);
-                    }
-                }
-            }
-
-            public void onCallChanged(
-                    ISipSession session, byte[] sessionDescription) {
-                String message = new String(sessionDescription);
-                Log.d(TAG, "sip call " + message + ": " + session);
-                mHolding = !mHolding;
-
-                if (mListener == null) return;
-                if (mHolding) {
-                    try {
-                        mListener.onCallHeld(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onCallHeld()", t);
-                    }
-                } else {
-                    try {
-                        mListener.onCallEstablished(SipAudioCallImpl.this);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onCallEstablished()", t);
-                    }
-                }
-            }
-
-            public void onError(ISipSession session, String className,
-                    String message) {
-                Log.d(TAG, "sip session error: " + className + ": " + message);
-                // don't stop RTP session on SIP error
-                // TODO: what to do if call is on hold
-                mSipSession = null;
-                if (mListener != null) {
-                    try {
-                        mListener.onError(SipAudioCallImpl.this,
-                                className + ": " + message);
-                    } catch (Throwable t) {
-                        Log.e(TAG, "onError()", t);
-                    }
-                }
-            }
-        };
+        }
     }
 
-    public void attachCall(ISipSession session, byte[] sessionDescription)
-            throws SipException {
+    @Override
+    public synchronized void onRingingBack(ISipSession session) {
+        Log.d(TAG, "sip call ringing back: " + session);
+        if (mInCall) startRingbackTone();
+        if (mListener != null) {
+            try {
+                mListener.onRingingBack(SipAudioCallImpl.this);
+            } catch (Throwable t) {
+                Log.e(TAG, "onRingingBack()", t);
+            }
+        }
+    }
+
+    @Override
+    public synchronized void onRinging(ISipSession session,
+            SipProfile peerProfile, byte[] sessionDescription) {
+        try {
+            if ((mSipSession == null) || !mInCall
+                    || !session.getCallId().equals(mSipSession.getCallId())) {
+                // should not happen
+                session.endCall();
+                return;
+            }
+
+            // session changing request
+            try {
+                mPeerSd = new SdpSessionDescription(sessionDescription);
+                answerCall();
+            } catch (Throwable e) {
+                Log.e(TAG, "onRinging()", e);
+                session.endCall();
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "onRinging()", e);
+        }
+    }
+
+    @Override
+    public synchronized void onCallEstablished(ISipSession session,
+            byte[] sessionDescription) {
+        stopRingbackTone();
+        stopRinging();
+        mChangingSession = false;
+        try {
+            SdpSessionDescription sd =
+                    new SdpSessionDescription(sessionDescription);
+            Log.d(TAG, "sip call established: " + session + ": " + sd);
+            startCall(sd);
+            mInCall = true;
+        } catch (SdpException e) {
+            Log.e(TAG, "createSessionDescription()", e);
+        }
+        if (mListener != null) {
+            try {
+                mListener.onCallEstablished(SipAudioCallImpl.this);
+            } catch (Throwable t) {
+                Log.e(TAG, "onCallEstablished()", t);
+            }
+        }
+    }
+
+    @Override
+    public synchronized void onCallEnded(ISipSession session) {
+        Log.d(TAG, "sip call ended: " + session);
+        close();
+        if (mListener != null) {
+            try {
+                mListener.onCallEnded(SipAudioCallImpl.this);
+            } catch (Throwable t) {
+                Log.e(TAG, "onCallEnded()", t);
+            }
+        }
+    }
+
+    @Override
+    public synchronized void onCallBusy(ISipSession session) {
+        Log.d(TAG, "sip call busy: " + session);
+        mChangingSession = false;
+        if (mListener != null) {
+            try {
+                mListener.onCallBusy(SipAudioCallImpl.this);
+            } catch (Throwable t) {
+                Log.e(TAG, "onCallBusy()", t);
+            }
+        }
+    }
+
+    @Override
+    public synchronized void onCallChangeFailed(ISipSession session,
+            String className, String message) {
+        // TODO:
+        mChangingSession = false;
+    }
+
+    @Override
+    public synchronized void onError(ISipSession session, String className,
+            String message) {
+        Log.d(TAG, "sip session error: " + className + ": " + message);
+        // don't stop RTP session on SIP error
+        // TODO: what to do if call is on hold
+        mSipSession = null;
+        mChangingSession = false;
+        if (mListener != null) {
+            try {
+                mListener.onError(SipAudioCallImpl.this,
+                        className + ": " + message);
+            } catch (Throwable t) {
+                Log.e(TAG, "onError()", t);
+            }
+        }
+    }
+
+    public synchronized void attachCall(ISipSession session,
+            byte[] sessionDescription) throws SipException {
         mSipSession = session;
         try {
-            mOfferSd = new SdpSessionDescription(sessionDescription);
-            session.setListener(createSipSessionListener());
+            mPeerSd = new SdpSessionDescription(sessionDescription);
+            session.setListener(this);
         } catch (Throwable e) {
             Log.e(TAG, "attachCall()", e);
             throwSipException(e);
         }
     }
 
-    public void makeCall(SipProfile peerProfile, ISipService sipService)
-            throws SipException {
+    public synchronized void makeCall(SipProfile peerProfile,
+            ISipService sipService) throws SipException {
         try {
-            mSipSession = sipService.createSession(mLocalProfile, 
-                    createSipSessionListener());
+            mSipSession = sipService.createSession(mLocalProfile, this);
             mSipSession.makeCall(peerProfile, createOfferSessionDescription());
         } catch (Throwable e) {
             throwSipException(e);
         }
     }
 
-    public void endCall() throws SipException {
+    public synchronized void endCall() throws SipException {
         try {
             stopRinging();
-            if (mSipSession != null) mSipSession.endCall();
+            mSipSession.endCall();
         } catch (Throwable e) {
             throwSipException(e);
         }
     }
 
-    public void holdCall() throws SipException {
+    public synchronized void holdCall() throws SipException {
         try {
-            if (mHolding) return;
-            if (mSipSession != null) {
-                mSipSession.changeCall(createHoldSessionDescription());
-            }
-            mHolding = true;
+            if (mChangingSession) return;
+            mChangingSession = true;
+            mSipSession.changeCall(createHoldSessionDescription());
         } catch (Throwable e) {
             throwSipException(e);
         }
     }
 
-    public void answerCall() throws SipException {
+    public synchronized void answerCall() throws SipException {
         try {
             stopRinging();
-            if (mSipSession != null) {
-                mSipSession.answerCall(createAnswerSessionDescription());
-            }
+            mSipSession.answerCall(createAnswerSessionDescription());
         } catch (Throwable e) {
             Log.e(TAG, "answerCall()", e);
             throwSipException(e);
         }
     }
 
-    public void continueCall() throws SipException {
+    public synchronized void continueCall() throws SipException {
         try {
-            if (!mHolding) return;
-            if (mSipSession != null) {
-                mSipSession.changeCall(createContinueSessionDescription());
-            }
-            mHolding = false;
+            if (mChangingSession) return;
+            mChangingSession = true;
+            mSipSession.changeCall(createContinueSessionDescription());
         } catch (Throwable e) {
             throwSipException(e);
         }
@@ -309,16 +328,27 @@ public class SipAudioCallImpl implements SipAudioCall {
     }
 
     private SessionDescription createAnswerSessionDescription() {
-        // choose an acceptable media from mOfferSd to answer
-        RtpSession rtpSession =
-                RtpFactory.createAudioSession(getCodecId(mOfferSd));
-        return createSdpBuilder(rtpSession).build();
+        try {
+            // choose an acceptable media from mPeerSd to answer
+            RtpSession rtpSession =
+                    RtpFactory.createAudioSession(getCodecId(mPeerSd));
+            SdpSessionDescription.Builder sdpBuilder =
+                    createSdpBuilder(rtpSession);
+            if (mPeerSd.isSendOnly(AUDIO)) {
+                sdpBuilder.addMediaAttribute(AUDIO, "recvonly", (String) null);
+            } else if (mPeerSd.isReceiveOnly(AUDIO)) {
+                sdpBuilder.addMediaAttribute(AUDIO, "sendonly", (String) null);
+            }
+            return sdpBuilder.build();
+        } catch (SdpException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private SessionDescription createHoldSessionDescription() {
         try {
             return createSdpBuilder(mRtpSession)
-                    .addMediaAttribute("sendonly", (String) null)
+                    .addMediaAttribute(AUDIO, "sendonly", (String) null)
                     .build();
         } catch (SdpException e) {
             throw new RuntimeException(e);
@@ -349,41 +379,43 @@ public class SipAudioCallImpl implements SipAudioCall {
             for (RtpSession s : rtpSessions) {
                 codecIds.add(s.getCodecId());
             }
-            sdpBuilder.addMedia("audio", getLocalMediaPort(), 1, "RTP/AVP",
+            sdpBuilder.addMedia(AUDIO, getLocalMediaPort(), 1, "RTP/AVP",
                     codecIds.toArray(new Integer[codecIds.size()]));
             for (RtpSession s : rtpSessions) {
-                sdpBuilder.addMediaAttribute("rtpmap", getMediaDescription(s));
+                sdpBuilder.addMediaAttribute(AUDIO, "rtpmap",
+                        getMediaDescription(s));
             }
-            sdpBuilder.addMediaAttribute("rtpmap", "101 telephone-event/8000");
+            sdpBuilder.addMediaAttribute(AUDIO, "rtpmap",
+                    "101 telephone-event/8000");
             // FIXME: deal with vbr codec
-            sdpBuilder.addMediaAttribute("ptime", "20");
+            sdpBuilder.addMediaAttribute(AUDIO, "ptime", "20");
         } catch (SdpException e) {
             throw new RuntimeException(e);
         }
         return sdpBuilder;
     }
 
-    public void toggleMute() {
+    public synchronized void toggleMute() {
         if (mRtpSession != null) {
             mRtpSession.toggleMute();
         }
     }
 
-    public boolean isMuted() {
+    public synchronized boolean isMuted() {
         return ((mRtpSession != null) ? mRtpSession.isMuted() : false);
     }
 
-    public void setInCallMode() {
+    public synchronized void setInCallMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setMode(AudioManager.MODE_IN_CALL);
     }
 
-    public void setSpeakerMode() {
+    public synchronized void setSpeakerMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setMode(AudioManager.MODE_NORMAL);
     }
 
-    public void sendDtmf() {
+    public synchronized void sendDtmf() {
         if (mSipSession == null) return;
         if (SipSessionState.IN_CALL == getState()) {
             mRtpSession.sendDtmf();
@@ -403,10 +435,13 @@ public class SipAudioCallImpl implements SipAudioCall {
         return 0;
     }
 
-    private void startCall(SdpSessionDescription sd) {
-        String peerMediaAddress = sd.getPeerMediaAddress(AUDIO);
+    private void startCall(SdpSessionDescription peerSd) {
+        stopCall(DONT_RELEASE_SOCKET);
+
+        mPeerSd = peerSd;
+        String peerMediaAddress = peerSd.getPeerMediaAddress(AUDIO);
         // TODO: handle multiple media fields
-        int peerMediaPort = sd.getPeerMediaPort(AUDIO);
+        int peerMediaPort = peerSd.getPeerMediaPort(AUDIO);
         Log.i(TAG, "start audiocall " + peerMediaAddress + ":" + peerMediaPort);
 
         int localPort = getLocalMediaPort();
@@ -416,8 +451,10 @@ public class SipAudioCallImpl implements SipAudioCall {
             // TODO: get sample rate from sdp
             mMediaSocket.connect(InetAddress.getByName(peerMediaAddress),
                     peerMediaPort);
-            mRtpSession = RtpFactory.createAudioSession(getCodecId(sd));
-            mRtpSession.start(sampleRate, mMediaSocket);
+            mRtpSession = RtpFactory.createAudioSession(
+                    getCodecId(peerSd), sampleRate, mMediaSocket);
+            if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
+            if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
             setInCallMode();
         } catch (Exception e) {
             Log.e(TAG, "call()", e);
@@ -426,12 +463,14 @@ public class SipAudioCallImpl implements SipAudioCall {
                 + ", peer=" + peerMediaAddress + ":" + peerMediaPort);
     }
 
-    private void stopCall() {
+    private void stopCall(boolean releaseSocket) {
         Log.d(TAG, "stop audiocall");
         if (mRtpSession != null) {
             mRtpSession.stop();
-            if (mMediaSocket != null) mMediaSocket.close();
-            mMediaSocket = null;
+            if (releaseSocket) {
+                if (mMediaSocket != null) mMediaSocket.close();
+                mMediaSocket = null;
+            }
         }
         setSpeakerMode();
     }
@@ -457,15 +496,15 @@ public class SipAudioCallImpl implements SipAudioCall {
         }
     }
 
-    public void setRingbackToneEnabled(boolean enabled) {
+    public synchronized void setRingbackToneEnabled(boolean enabled) {
         mRingbackToneEnabled = enabled;
     }
 
-    public void setRingtoneEnabled(boolean enabled) {
+    public synchronized void setRingtoneEnabled(boolean enabled) {
         mRingtoneEnabled = enabled;
     }
 
-    private synchronized void startRingbackTone() {
+    private void startRingbackTone() {
         if (!mRingbackToneEnabled) return;
         if (mRingbackTone == null) {
             // The volume relative to other sounds in the stream
@@ -477,7 +516,7 @@ public class SipAudioCallImpl implements SipAudioCall {
         mRingbackTone.startTone(ToneGenerator.TONE_CDMA_LOW_PBX_L);
     }
 
-    private synchronized void stopRingbackTone() {
+    private void stopRingbackTone() {
         if (mRingbackTone != null) {
             mRingbackTone.stopTone();
             setSpeakerMode();
@@ -486,7 +525,7 @@ public class SipAudioCallImpl implements SipAudioCall {
         }
     }
 
-    private synchronized void startRinging() {
+    private void startRinging() {
         if (!mRingtoneEnabled) return;
         ((Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE))
                 .vibrate(new long[] {0, 1000, 1000}, 1);
@@ -501,7 +540,7 @@ public class SipAudioCallImpl implements SipAudioCall {
         }
     }
 
-    private synchronized void stopRinging() {
+    private void stopRinging() {
         ((Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE))
                 .cancel();
         if (mRingtone != null) mRingtone.stop();
@@ -522,4 +561,6 @@ public class SipAudioCallImpl implements SipAudioCall {
             return null;
         }
     }
+
+    // TODO: fix listener callback deadlock
 }

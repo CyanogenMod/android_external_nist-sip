@@ -36,6 +36,8 @@
     <string name="menu_incall_mode">Speaker OFF</string>
     <string name="menu_mute">Mute</string>
     <string name="menu_unmute">Unmute</string>
+    <string name="menu_hold">Hold</string>
+    <string name="menu_unhold">Unhold</string>
     <string name="field_not_set">%s is not set.</string>
     <string name="field_not_set_optional">%s is not set. (optional)</string>
 

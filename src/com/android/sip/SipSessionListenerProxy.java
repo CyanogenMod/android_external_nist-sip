@@ -116,14 +116,14 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
         });
     }
 
-    public void onCallChanged(final ISipSession session,
-            final byte[] sessionDescription) {
+    public void onCallChangeFailed(final ISipSession session,
+            final String className, final String message) {
         proxy(new Runnable() {
             public void run() {
                 try {
-                    mListener.onCallChanged(session, sessionDescription);
+                    mListener.onCallChangeFailed(session, className, message);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onCallChanged(): " + t);
+                    Log.w(TAG, "onCallChangeFailed(): " + t);
                 }
             }
         });
