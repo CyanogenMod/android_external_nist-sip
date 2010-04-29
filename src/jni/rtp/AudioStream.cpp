@@ -182,7 +182,7 @@ bool AudioStream::set(RtpSocket *rtpSocket, const char *codecName,
     read(gRandom, &mLocalSsrc, sizeof(mLocalSsrc));
 
     mCodecMagic = (0x8000 | codecType) << 16;
-    mDtmfMagic = (dtmfType == -1 ? ~0 : (0x8000 | dtmfType) << 16);
+    mDtmfMagic = (dtmfType == -1 ? -1 : (0x8000 | dtmfType) << 16);
 
     mSampleRate = sampleRate;
     mSampleCount = sampleCount;
@@ -227,7 +227,7 @@ bool AudioStream::startReceiving()
 
 bool AudioStream::sendDtmf(int event)
 {
-    if (mRecord.stopped() || mDtmfMagic == ~0) {
+    if (mRecord.stopped() || ~mDtmfMagic == 0) {
         return false;
     }
     if (android_atomic_cmpxchg(-1, event, &mNextDtmfEvent)) {
