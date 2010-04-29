@@ -23,8 +23,8 @@ public interface RtpSession {
     int getCodecId();
     String getName();
     int getSampleRate();
-    void start(int remoteSampleRate, DatagramSocket connectedSocket)
-            throws IOException ;
+    void startSending();
+    void startReceiving();
     void stop();
     void toggleMute();
     boolean isMuted();

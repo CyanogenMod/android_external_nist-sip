@@ -25,6 +25,7 @@ interface ISipSession {
     SipProfile getLocalProfile();
     SipProfile getPeerProfile();
     String getState();
+    boolean isInCall();
     String getCallId();
 
     void setListener(in ISipSessionListener listener);

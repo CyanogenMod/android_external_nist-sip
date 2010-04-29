@@ -40,6 +40,10 @@ public class SipSessionAdapter extends ISipSessionListener.Stub {
     public void onCallChanged(ISipSession session, byte[] sessionDescription) {
     }
 
+    public void onCallChangeFailed(ISipSession session, String className,
+            String message) {
+    }
+
     public void onError(ISipSession session, String className, String message) {
     }
 

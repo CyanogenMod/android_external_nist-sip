@@ -299,12 +299,14 @@ class SipSessionGroup implements SipListener {
         ServerTransaction mServerTransaction;
         ClientTransaction mClientTransaction;
         byte[] mPeerSessionDescription;
+        boolean mInCall;
 
         public SipSessionImpl(ISipSessionListener listener) {
             setListener(listener);
         }
 
         private void reset() {
+            mInCall = false;
             removeSipSession(this);
             mPeerProfile = null;
             mState = SipSessionState.READY_TO_CALL;
@@ -313,6 +315,10 @@ class SipSessionGroup implements SipListener {
             mServerTransaction = null;
             mClientTransaction = null;
             mPeerSessionDescription = null;
+        }
+
+        public boolean isInCall() {
+            return mInCall;
         }
 
         public void onNetworkDisconnected() {
@@ -377,7 +383,6 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        // http://www.tech-invite.com/Ti-sip-service-1.html#fig5
         public synchronized void changeCall(
                 SessionDescription sessionDescription) {
             try {
@@ -447,15 +452,6 @@ class SipSessionGroup implements SipListener {
             case IN_CALL:
                 processed = inCall(evt);
                 break;
-            case IN_CALL_ANSWERING:
-                processed = inCallAnsweringToInCall(evt);
-                break;
-            case IN_CALL_CHANGING:
-                processed = inCallChanging(evt);
-                break;
-            case IN_CALL_CHANGING_CANCELING:
-                processed = inCallChangingToInCall(evt);
-                break;
             default:
                 processed = false;
             }
@@ -519,15 +515,9 @@ class SipSessionGroup implements SipListener {
             case OUTGOING_CALL:
             case OUTGOING_CALL_RING_BACK:
             case OUTGOING_CALL_CANCELING:
-            case IN_CALL_CHANGING:
                 // rfc3261#section-14.1
                 // if re-invite gets timed out, terminate the dialog
                 endCallOnError(new SipException("timed out"));
-                break;
-            case IN_CALL_ANSWERING:
-            case IN_CALL_CHANGING_CANCELING:
-                mState = SipSessionState.IN_CALL;
-                onError(new SipException("timed out"));
                 break;
             default:
                 // do nothing
@@ -679,8 +669,12 @@ class SipSessionGroup implements SipListener {
                 default:
                     if (statusCode >= 400) {
                         // error: an ack is sent automatically by the stack
-                        endCallOnError(createCallbackException(response));
-                        return true;
+                        if (mInCall) {
+                            return handleInCallError(response);
+                        } else {
+                            endCallOnError(createCallbackException(response));
+                            return true;
+                        }
                     } else if (statusCode >= 300) {
                         // TODO: handle 3xx (redirect)
                     } else {
@@ -699,6 +693,34 @@ class SipSessionGroup implements SipListener {
             return false;
         }
 
+        private boolean handleInCallError(Response response) {
+            int statusCode = response.getStatusCode();
+            switch (statusCode) {
+            case Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST:
+            case Response.REQUEST_TIMEOUT:
+                // rfc3261#section-14.1: re-invite failed; terminate
+                // the dialog
+                endCallOnError(createCallbackException(response));
+                return true;
+            case Response.REQUEST_PENDING:
+                // TODO:
+                // rfc3261#section-14.1; re-schedule invite
+                return true;
+            default:
+                if (statusCode >= 400) {
+                    // error: an ack is sent automatically by the stack
+                    mState = SipSessionState.IN_CALL;
+                    onError(createCallbackException(response));
+                    return true;
+                } else if (statusCode >= 300) {
+                    // TODO: handle 3xx (redirect)
+                } else {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private boolean outgoingCallToReady(EventObject evt)
                 throws SipException {
             if (evt instanceof ResponseEvent) {
@@ -712,7 +734,14 @@ class SipSessionGroup implements SipListener {
                     }
                 } else if (expectResponse(Request.INVITE, evt)) {
                     if (statusCode == Response.REQUEST_TERMINATED) {
-                        endCallNormally();
+                        if (mInCall) {
+                            fallbackToPreviousInCall(response);
+                        } else {
+                            endCallNormally();
+                        }
+                        return true;
+                    } else if (statusCode == Response.OK) {
+                        outgoingCall(evt); // abort Cancel
                         return true;
                     }
                 } else {
@@ -720,7 +749,11 @@ class SipSessionGroup implements SipListener {
                 }
 
                 if (statusCode >= 400) {
-                    endCallOnError(createCallbackException(response));
+                    if (mInCall) {
+                        fallbackToPreviousInCall(response);
+                    } else {
+                        endCallOnError(createCallbackException(response));
+                    }
                     return true;
                 }
             }
@@ -739,9 +772,9 @@ class SipSessionGroup implements SipListener {
                 // got Re-INVITE
                 RequestEvent event = (RequestEvent) evt;
                 mSipHelper.sendReInviteOk(event, mLocalProfile);
-                mState = SipSessionState.IN_CALL_ANSWERING;
+                mState = SipSessionState.INCOMING_CALL;
                 mPeerSessionDescription = event.getRequest().getRawContent();
-                mProxy.onCallChanged(this, mPeerSessionDescription);
+                mProxy.onRinging(this, mPeerProfile, mPeerSessionDescription);
                 return true;
             } else if (isRequestEvent(Request.BYE, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt, Response.OK);
@@ -751,75 +784,7 @@ class SipSessionGroup implements SipListener {
                 // to change call
                 mClientTransaction = mSipHelper.sendReinvite(mDialog,
                         ((MakeCallCommand) evt).getSessionDescription());
-                mState = SipSessionState.IN_CALL_CHANGING;
-                return true;
-            }
-            return false;
-        }
-
-        private boolean inCallChanging(EventObject evt)
-                throws SipException {
-            if (expectResponse(Request.INVITE, evt)) {
-                ResponseEvent event = (ResponseEvent) evt;
-                Response response = event.getResponse();
-
-                int statusCode = response.getStatusCode();
-                switch (statusCode) {
-                case Response.OK:
-                    mSipHelper.sendInviteAck(event, mDialog);
-                    establishCall();
-                    return true;
-                case Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST:
-                case Response.REQUEST_TIMEOUT:
-                    // rfc3261#section-14.1: re-invite failed; terminate
-                    // the dialog
-                    endCallOnError(createCallbackException(response));
-                    return true;
-                case Response.REQUEST_PENDING:
-                    // TODO:
-                    // rfc3261#section-14.1; re-schedule invite
-                    return true;
-                default:
-                    if (statusCode >= 400) {
-                        // error: an ack is sent automatically by the stack
-                        mState = SipSessionState.IN_CALL;
-                        onError(createCallbackException(response));
-                        return true;
-                    } else if (statusCode >= 300) {
-                        // TODO: handle 3xx (redirect)
-                    } else {
-                        return true;
-                    }
-                }
-                return false;
-            } else if (END_CALL == evt) {
-                mSipHelper.sendCancel(mClientTransaction);
-                mState = SipSessionState.IN_CALL_CHANGING_CANCELING;
-                return true;
-            }
-            return false;
-        }
-
-        private boolean inCallChangingToInCall(EventObject evt)
-                throws SipException {
-            if (expectResponse(Response.OK, Request.CANCEL, evt)) {
-                // do nothing; wait for REQUEST_TERMINATED
-                return true;
-            } else if (expectResponse(Response.OK, Request.INVITE, evt)) {
-                inCallChanging(evt); // abort Cancel
-                return true;
-            } else if (expectResponse(Response.REQUEST_TERMINATED,
-                    Request.INVITE, evt)) {
-                establishCall();
-                return true;
-            }
-            return false;
-        }
-
-        private boolean inCallAnsweringToInCall(EventObject evt) {
-            // expect ACK
-            if (isRequestEvent(Request.ACK, evt)) {
-                establishCall();
+                mState = SipSessionState.OUTGOING_CALL;
                 return true;
             }
             return false;
@@ -832,7 +797,15 @@ class SipSessionGroup implements SipListener {
 
         private void establishCall() {
             mState = SipSessionState.IN_CALL;
+            mInCall = true;
             mProxy.onCallEstablished(this, mPeerSessionDescription);
+        }
+
+        private void fallbackToPreviousInCall(Response response) {
+            Throwable exception = createCallbackException(response);
+            mState = SipSessionState.IN_CALL;
+            mProxy.onCallChangeFailed(this, exception.getClass().getName(),
+                    exception.getMessage());
         }
 
         private void endCallNormally() {

@@ -29,11 +29,8 @@ public enum SipSessionState {
     OUTGOING_CALL_RING_BACK,
     OUTGOING_CALL_CANCELING,
 
-    // the states below must be after the session being established
+    // the states below must be after the session has been established
     IN_CALL,
-    IN_CALL_CHANGING,
-    IN_CALL_CHANGING_CANCELING,
-    IN_CALL_ANSWERING,
 
     REMOTE_ERROR,
 }

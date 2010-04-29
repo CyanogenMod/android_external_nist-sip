@@ -28,8 +28,10 @@ interface ISipSessionListener {
             in byte[] sessionDescription);
     void onCallEnded(in ISipSession session);
     void onCallBusy(in ISipSession session);
-    void onCallChanged(in ISipSession session, in byte[] sessionDescription);
+
     void onError(in ISipSession session, String errorClass,
+            String errorMessage);
+    void onCallChangeFailed(in ISipSession session, String errorClass,
             String errorMessage);
 
     void onRegistrationDone(in ISipSession session, int duration);

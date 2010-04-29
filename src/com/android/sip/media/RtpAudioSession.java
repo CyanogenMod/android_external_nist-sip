@@ -16,12 +16,6 @@
 
 package com.android.sip.media;
 
-import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
@@ -30,18 +24,21 @@ import android.media.MediaRecorder;
 import android.os.Process;
 import android.util.Log;
 
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 class RtpAudioSession implements RtpSession {
     private static final String TAG = RtpAudioSession.class.getSimpleName();
     private static final int AUDIO_SAMPLE_RATE = 8000;
     private static final int MAX_ALLOWABLE_LATENCY = 500; // ms
 
-    private boolean mRunning = false;
     private RecordTask mRecordTask;
     private PlayTask mPlayTask;
 
     private DatagramSocket mSocket;
-    private InetAddress mRemoteAddr;
-    private int mRemotePort;
     private boolean mSendDtmf = false;
     private int mCodecId;
 
@@ -51,15 +48,11 @@ class RtpAudioSession implements RtpSession {
         mCodecId = codecId;
     }
 
-    private void init(int remoteSampleRate, DatagramSocket socket) {
-        mRemoteAddr = socket.getInetAddress();
-        mRemotePort = socket.getPort();
+    void set(int remoteSampleRate, DatagramSocket socket) {
         mSocket = socket;
         int localFrameSize = AUDIO_SAMPLE_RATE / 50; // 50 frames / sec
         mRecordTask = new RecordTask(AUDIO_SAMPLE_RATE, localFrameSize);
         mPlayTask = new PlayTask(remoteSampleRate, localFrameSize);
-        Log.v(TAG, "create RtpSession: to connect to " + mRemoteAddr + ":"
-                + mRemotePort + " using codec " + mCodecId);
     }
 
     public int getCodecId() {
@@ -77,22 +70,17 @@ class RtpAudioSession implements RtpSession {
         }
     }
 
-    public void start(int remoteSampleRate, DatagramSocket connectedSocket)
-            throws IOException {
-        init(remoteSampleRate, connectedSocket);
-        if (mRunning) return;
+    public void startSending() {
+        mRecordTask.start();
+    }
 
-        mRunning = true;
-        Log.v(TAG, "start RtpSession: connect to " + mRemoteAddr + ":"
-                + mRemotePort);
-        if (mRemoteAddr != null) {
-            mRecordTask.start(mRemoteAddr, mRemotePort);
-        }
+    public void startReceiving() {
         mPlayTask.start();
     }
 
     public synchronized void stop() {
-        mRunning = false;
+        mRecordTask.stop();
+        mPlayTask.stop();
         Log.v(TAG, "stop RtpSession: measured volume = "
                 + mNoiseGenerator.mMeasuredVolume);
         // wait until player is stopped
@@ -118,18 +106,11 @@ class RtpAudioSession implements RtpSession {
         mSendDtmf = true;
     }
 
-    private void startRecordTask(InetAddress remoteAddr, int remotePort) {
-        mRemoteAddr = remoteAddr;
-        mRemotePort = remotePort;
-        if ((mRemoteAddr != null) && mRunning && !mSocket.isConnected()) {
-            mRecordTask.start(remoteAddr, remotePort);
-        }
-    }
-
     private class PlayTask implements Runnable {
         private int mSampleRate;
         private int mFrameSize;
         private AudioPlayer mPlayer;
+        private boolean mRunning;
 
         PlayTask(int sampleRate, int frameSize) {
             mSampleRate = sampleRate;
@@ -137,7 +118,13 @@ class RtpAudioSession implements RtpSession {
         }
 
         void start() {
+            if (mRunning) return;
+            mRunning = true;
             new Thread(this).start();
+        }
+
+        void stop() {
+            mRunning = false;
         }
 
         boolean isStopped() {
@@ -171,7 +158,6 @@ class RtpAudioSession implements RtpSession {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
             player.play();
             int playState = player.getPlayState();
-            boolean socketConnected = mSocket.isConnected();
             long receiveCount = 0;
             long cyclePeriod = mFrameSize * 1000L / mSampleRate;
             long cycleStart = 0;
@@ -194,12 +180,6 @@ class RtpAudioSession implements RtpSession {
             }
             cycleStart = System.currentTimeMillis();
             seqNo = receiver.getSequenceNumber();
-
-            if (!socketConnected) {
-                socketConnected = true;
-                startRecordTask(receiver.getRemoteAddress(),
-                        receiver.getRemotePort());
-            }
 
             long startTime = System.currentTimeMillis();
             long virtualClock = startTime;
@@ -242,7 +222,7 @@ class RtpAudioSession implements RtpSession {
                         late -= (long) delta;
                     }
 
-                    if (late  > 100) {
+                    if (late  > 200) {
                         // drop
                         bytesDropped += decodeCount;
                         if (LogRateLimiter.allowLogging(now)) {
@@ -287,6 +267,7 @@ class RtpAudioSession implements RtpSession {
     private class RecordTask implements Runnable {
         private int mSampleRate;
         private int mFrameSize;
+        private boolean mRunning;
         private boolean mMuted = false;
 
         RecordTask(int sampleRate, int frameSize) {
@@ -294,10 +275,14 @@ class RtpAudioSession implements RtpSession {
             mFrameSize = frameSize;
         }
 
-        void start(InetAddress addr, int port) {
-            Log.d(TAG, "start RecordTask, connect to " + addr + ":" + port);
-            mSocket.connect(addr, port);
+        void start() {
+            if (mRunning) return;
+            mRunning = true;
             new Thread(this).start();
+        }
+
+        void stop() {
+            mRunning = false;
         }
 
         void toggleMute() {

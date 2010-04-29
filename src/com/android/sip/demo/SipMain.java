@@ -62,6 +62,7 @@ public class SipMain extends PreferenceActivity
     private static final int MENU_SEND_DTMF_1 = Menu.FIRST + 3;
     private static final int MENU_SPEAKER_MODE = Menu.FIRST + 4;
     private static final int MENU_MUTE = Menu.FIRST + 5;
+    private static final int MENU_HOLD = Menu.FIRST + 6;
 
     private Preference mCallStatus;
     private EditTextPreference mPeerUri;
@@ -76,7 +77,6 @@ public class SipMain extends PreferenceActivity
     private ISipSession mSipSession;
 
     private MyDialog mDialog;
-    private boolean mHolding;
     private Throwable mError;
     private boolean mChanged;
     private boolean mSpeakerMode;
@@ -395,15 +395,10 @@ public class SipMain extends PreferenceActivity
     }
 
     private void holdOrEndCall() {
-        try {
-            if (Math.random() > 0.4) {
-                mAudioCall.holdCall();
-            } else {
-                mAudioCall.endCall();
-            }
-        } catch (SipException e) {
-            Log.e(TAG, "holdOrEndCall()", e);
-            setCallStatus(e);
+        if (Math.random() > 0.4) {
+            holdCall();
+        } else {
+            endCall();
         }
     }
 
@@ -424,12 +419,34 @@ public class SipMain extends PreferenceActivity
         }
     }
 
+    private void holdCall() {
+        try {
+            mAudioCall.holdCall();
+        } catch (SipException e) {
+            Log.e(TAG, "holdCall()", e);
+            setCallStatus(e);
+        }
+    }
+
     private void continueCall() {
         try {
             mAudioCall.continueCall();
         } catch (SipException e) {
             Log.e(TAG, "continueCall()", e);
             setCallStatus(e);
+        }
+    }
+
+    private boolean isOnHold() {
+        if (mAudioCall == null) return false;
+        return mAudioCall.isOnHold();
+    }
+
+    private void toggleOnHold() {
+        if (isOnHold()) {
+            continueCall();
+        } else {
+            holdCall();
         }
     }
 
@@ -472,6 +489,7 @@ public class SipMain extends PreferenceActivity
                 ? SipSessionState.READY_TO_CALL
                 : getCallState();
         boolean muted = (mAudioCall == null) ? false : mAudioCall.isMuted();
+        boolean onHold = isOnHold();
 
         Log.v(TAG, "onPrepareOptionsMenu(), status=" + state);
         menu.clear();
@@ -486,6 +504,8 @@ public class SipMain extends PreferenceActivity
             menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
             menu.add(0, MENU_MUTE, 0,
                     (muted ? R.string.menu_unmute : R.string.menu_mute));
+            menu.add(0, MENU_HOLD, 0,
+                    (onHold ? R.string.menu_unhold : R.string.menu_hold));
             /* pass through */
         default:
             menu.add(0, MENU_HANGUP, 0, R.string.menu_hangup);
@@ -524,6 +544,10 @@ public class SipMain extends PreferenceActivity
 
             case MENU_MUTE:
                 toggleMute();
+                return true;
+
+            case MENU_HOLD:
+                toggleOnHold();
                 return true;
         }
         return super.onOptionsItemSelected(item);
@@ -580,11 +604,7 @@ public class SipMain extends PreferenceActivity
         case OUTGOING_CALL_CANCELING:
             return "Cancelling...";
         case IN_CALL:
-            return (mHolding ? "On hold" : "Established");
-        case IN_CALL_CHANGING:
-            return "Changing session...";
-        case IN_CALL_ANSWERING:
-            return "Changing session answering...";
+            return (isOnHold() ? "On hold" : "Established");
         default:
             return "Unknown";
         }
@@ -603,14 +623,13 @@ public class SipMain extends PreferenceActivity
                 break;
             case OUTGOING_CALL_RING_BACK:
             case OUTGOING_CALL:
-            case IN_CALL_CHANGING:
                 endCall();
                 break;
             case IN_CALL:
-                if (!mHolding) {
-                    holdOrEndCall();
-                } else {
+                if (isOnHold()) {
                     continueCall();
+                } else {
+                    holdOrEndCall();
                 }
                 break;
             case OUTGOING_CALL_CANCELING:

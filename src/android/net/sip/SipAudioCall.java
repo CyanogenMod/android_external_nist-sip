@@ -87,8 +87,10 @@ public interface SipAudioCall {
     void setInCallMode();
     void setSpeakerMode();
     void toggleMute();
+    boolean isOnHold();
     boolean isMuted();
     void sendDtmf();
+    boolean isInCall();
     SipSessionState getState();
     ISipSession getSipSession();
     void setRingbackToneEnabled(boolean enabled);
