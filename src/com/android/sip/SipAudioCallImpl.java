@@ -18,8 +18,9 @@ package com.android.sip;
 
 import gov.nist.javax.sdp.fields.SDPKeywords;
 
-import com.android.sip.media.RtpFactory;
-import com.android.sip.media.RtpSession;
+import com.android.sip.rtp.AudioCodec;
+import com.android.sip.rtp.AudioStream;
+import com.android.sip.rtp.RtpSocket;
 
 import android.content.Context;
 import android.media.AudioManager;
@@ -41,13 +42,12 @@ import android.provider.Settings;
 import android.util.Log;
 
 import java.io.IOException;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import javax.sdp.SdpException;
 import javax.sip.SipException;
 
@@ -67,10 +67,12 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private ISipSession mSipSession;
     private SdpSessionDescription mPeerSd;
 
-    private RtpSession mRtpSession;
-    private DatagramSocket mMediaSocket;
+    private AudioStream mRtpSession;
+    private SdpSessionDescription.AudioCodec mCodec;
+    private RtpSocket mMediaSocket;
     private boolean mChangingSession = false;
     private boolean mInCall = false;
+    private boolean mMuted = false;
 
     private boolean mRingbackToneEnabled = true;
     private boolean mRingtoneEnabled = true;
@@ -323,17 +325,17 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     private SessionDescription createOfferSessionDescription() {
-        RtpSession[] rtpSessions = RtpFactory.getSystemSupportedAudioSessions();
-        return createSdpBuilder(rtpSessions).build();
+        AudioCodec[] codecs = AudioCodec.getSystemSupportedCodecs();
+        return createSdpBuilder(convert(codecs)).build();
     }
 
     private SessionDescription createAnswerSessionDescription() {
         try {
             // choose an acceptable media from mPeerSd to answer
-            RtpSession rtpSession =
-                    RtpFactory.createAudioSession(getCodecId(mPeerSd));
+            AudioCodec codec = 
+                    AudioCodec.getSystemSupportedCodec(getCodec(mPeerSd).name);
             SdpSessionDescription.Builder sdpBuilder =
-                    createSdpBuilder(rtpSession);
+                    createSdpBuilder(convert(codec));
             if (mPeerSd.isSendOnly(AUDIO)) {
                 sdpBuilder.addMediaAttribute(AUDIO, "recvonly", (String) null);
             } else if (mPeerSd.isReceiveOnly(AUDIO)) {
@@ -347,7 +349,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
 
     private SessionDescription createHoldSessionDescription() {
         try {
-            return createSdpBuilder(mRtpSession)
+            return createSdpBuilder(mCodec)
                     .addMediaAttribute(AUDIO, "sendonly", (String) null)
                     .build();
         } catch (SdpException e) {
@@ -356,15 +358,16 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     private SessionDescription createContinueSessionDescription() {
-        return createSdpBuilder(mRtpSession).build();
+        return createSdpBuilder(mCodec).build();
     }
 
-    private String getMediaDescription(RtpSession session) {
-        return String.format("%d %s/%d", session.getCodecId(),
-                session.getName(), session.getSampleRate());
+    private String getMediaDescription(SdpSessionDescription.AudioCodec codec) {
+        return String.format("%d %s/%d", codec.payloadType, codec.name,
+                codec.sampleRate);
     }
 
-    private SdpSessionDescription.Builder createSdpBuilder(RtpSession... rtpSessions) {
+    private SdpSessionDescription.Builder createSdpBuilder(
+            SdpSessionDescription.AudioCodec... codecs) {
         String localIp = getLocalIp();
         SdpSessionDescription.Builder sdpBuilder;
         try {
@@ -376,14 +379,14 @@ public class SipAudioCallImpl extends SipSessionAdapter
                     .setConnectionInfo(SDPKeywords.IN, SDPKeywords.IPV4,
                             localIp);
             List<Integer> codecIds = new ArrayList<Integer>();
-            for (RtpSession s : rtpSessions) {
-                codecIds.add(s.getCodecId());
+            for (SdpSessionDescription.AudioCodec codec : codecs) {
+                codecIds.add(codec.payloadType);
             }
             sdpBuilder.addMedia(AUDIO, getLocalMediaPort(), 1, "RTP/AVP",
                     codecIds.toArray(new Integer[codecIds.size()]));
-            for (RtpSession s : rtpSessions) {
+            for (SdpSessionDescription.AudioCodec codec : codecs) {
                 sdpBuilder.addMediaAttribute(AUDIO, "rtpmap",
-                        getMediaDescription(s));
+                        getMediaDescription(codec));
             }
             sdpBuilder.addMediaAttribute(AUDIO, "rtpmap",
                     "101 telephone-event/8000");
@@ -397,12 +400,17 @@ public class SipAudioCallImpl extends SipSessionAdapter
 
     public synchronized void toggleMute() {
         if (mRtpSession != null) {
-            mRtpSession.toggleMute();
+            if (mMuted) {
+                mRtpSession.startSending();
+            } else {
+                mRtpSession.stopSending();
+            }
+            mMuted = !mMuted;
         }
     }
 
     public synchronized boolean isMuted() {
-        return ((mRtpSession != null) ? mRtpSession.isMuted() : false);
+        return mMuted;
     }
 
     public synchronized void setInCallMode() {
@@ -418,21 +426,41 @@ public class SipAudioCallImpl extends SipSessionAdapter
     public synchronized void sendDtmf() {
         if (mSipSession == null) return;
         if (SipSessionState.IN_CALL == getState()) {
-            mRtpSession.sendDtmf();
+            mRtpSession.sendDtmf(1);
         }
     }
 
-    private int getCodecId(SdpSessionDescription sd) {
-        Set<Integer> acceptableFormats = new HashSet<Integer>();
-        for (RtpSession session :
-                RtpFactory.getSystemSupportedAudioSessions()) {
-            acceptableFormats.add(session.getCodecId());
+    private SdpSessionDescription.AudioCodec getCodec(SdpSessionDescription sd) {
+        HashMap<String, AudioCodec> acceptableCodecs =
+                new HashMap<String, AudioCodec>();
+        for (AudioCodec codec : AudioCodec.getSystemSupportedCodecs()) {
+            acceptableCodecs.put(codec.name, codec);
         }
-        for (int id : sd.getMediaFormats(AUDIO)) {
-            if (acceptableFormats.contains(id)) return id;
+        for (SdpSessionDescription.AudioCodec codec : sd.getAudioCodecs()) {
+            AudioCodec matchedCodec = acceptableCodecs.get(codec.name);
+            if (matchedCodec != null) return codec;
         }
-        Log.w(TAG, "no common codec is found, use 0");
-        return 0;
+        Log.w(TAG, "no common codec is found, use PCM/0");
+        return convert(AudioCodec.ULAW);
+    }
+
+    private AudioCodec convert(SdpSessionDescription.AudioCodec codec) {
+        AudioCodec c = AudioCodec.getSystemSupportedCodec(codec.name);
+        return ((c == null) ? AudioCodec.ULAW : c);
+    }
+
+    private SdpSessionDescription.AudioCodec convert(AudioCodec codec) {
+        return new SdpSessionDescription.AudioCodec(codec.defaultType,
+                codec.name, codec.sampleRate, codec.sampleCount);
+    }
+
+    private SdpSessionDescription.AudioCodec[] convert(AudioCodec[] codecs) {
+        SdpSessionDescription.AudioCodec[] copies =
+                new SdpSessionDescription.AudioCodec[codecs.length];
+        for (int i = 0, len = codecs.length; i < len; i++) {
+            copies[i] = convert(codecs[i]);
+        }
+        return copies;
     }
 
     private void startCall(SdpSessionDescription peerSd) {
@@ -449,10 +477,12 @@ public class SipAudioCallImpl extends SipSessionAdapter
         int frameSize = sampleRate / 50; // 160
         try {
             // TODO: get sample rate from sdp
-            mMediaSocket.connect(InetAddress.getByName(peerMediaAddress),
+            mMediaSocket.associate(InetAddress.getByName(peerMediaAddress),
                     peerMediaPort);
-            mRtpSession = RtpFactory.createAudioSession(
-                    getCodecId(peerSd), sampleRate, mMediaSocket);
+            mCodec = getCodec(peerSd);
+            mRtpSession = new AudioStream(mMediaSocket);
+            mRtpSession.setCodec(convert(mCodec), mCodec.payloadType);
+            mRtpSession.prepare();
             if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
             if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
             setInCallMode();
@@ -466,9 +496,10 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private void stopCall(boolean releaseSocket) {
         Log.d(TAG, "stop audiocall");
         if (mRtpSession != null) {
-            mRtpSession.stop();
+            mRtpSession.stopSending();
+            mRtpSession.stopReceiving();
             if (releaseSocket) {
-                if (mMediaSocket != null) mMediaSocket.close();
+                //if (mMediaSocket != null) mMediaSocket.close();
                 mMediaSocket = null;
             }
         }
@@ -478,7 +509,8 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private int getLocalMediaPort() {
         if (mMediaSocket != null) return mMediaSocket.getLocalPort();
         try {
-            DatagramSocket s = mMediaSocket = new DatagramSocket();
+            RtpSocket s = mMediaSocket =
+                    new RtpSocket(InetAddress.getByName(getLocalIp()));
             int localPort = s.getLocalPort();
             return localPort;
         } catch (IOException e) {

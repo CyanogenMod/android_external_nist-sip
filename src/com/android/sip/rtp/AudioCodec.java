@@ -20,6 +20,27 @@ public class AudioCodec {
     public static final AudioCodec ULAW = new AudioCodec("PCMU", 8000, 160, 0);
     public static final AudioCodec ALAW = new AudioCodec("PCMA", 8000, 160, 8);
 
+    /**
+     * Returns system supported codecs.
+     */
+    public static AudioCodec[] getSystemSupportedCodecs() {
+        return new AudioCodec[] {AudioCodec.ULAW, AudioCodec.ALAW};
+    }
+
+    /**
+     * Returns the codec instance if it is supported by the system.
+     *
+     * @param name name of the codec
+     * @return the matched codec or null if the codec name is not supported by
+     *      the system
+     */
+    public static AudioCodec getSystemSupportedCodec(String name) {
+        for (AudioCodec codec : getSystemSupportedCodecs()) {
+            if (codec.name.equals(name)) return codec;
+        }
+        return null;
+    }
+
     public final String name;
     public final int sampleRate;
     public final int sampleCount;

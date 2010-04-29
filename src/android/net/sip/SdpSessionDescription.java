@@ -40,7 +40,26 @@ import javax.sip.SipException;
 
 public class SdpSessionDescription extends SessionDescription {
     private static final String TAG = "SDP";
+    private static final String AUDIO = "audio";
+    private static final String RTPMAP = "rtpmap";
+    private static final String PTIME = "ptime";
+
     private SessionDescriptionImpl mSessionDescription;
+
+    public static class AudioCodec {
+        public final int payloadType;
+        public final String name;
+        public final int sampleRate;
+        public final int sampleCount;
+
+        public AudioCodec(int payloadType, String name, int sampleRate,
+                int sampleCount) {
+            this.payloadType = payloadType;
+            this.name = name;
+            this.sampleRate = sampleRate;
+            this.sampleCount = sampleCount;
+        }
+    }
 
     public static class Builder {
         private SdpSessionDescription mSdp = new SdpSessionDescription();
@@ -236,23 +255,46 @@ public class SdpSessionDescription extends SessionDescription {
         return answer;
     }
 
-    public List<Integer> getMediaFormats(String type) {
-        MediaDescription md = getMediaDescription(type);
-        if (md == null) return new ArrayList<Integer>();
+    private AudioCodec parseAudioCodec(String rtpmap, int ptime) {
+        String[] ss = rtpmap.split(" ");
+        int payloadType = Integer.parseInt(ss[0]);
 
-        Vector<String> formatVector = (md == null)
-                ? null
-                : md.getMedia().getFormats();
-        if (formatVector == null) formatVector = new Vector<String>();
-        List<Integer> formats = new ArrayList<Integer>();
-        for (String id : formatVector) {
+        ss = ss[1].split("/");
+        String name = ss[0];
+        int sampleRate = Integer.parseInt(ss[1]);
+        int channelCount = 1;
+        if (ss.length > 2) channelCount = Integer.parseInt(ss[2]);
+        int sampleCount = sampleRate / (1000 / ptime) * channelCount;
+        return new AudioCodec(payloadType, name, sampleRate, sampleCount);
+    }
+
+    public List<AudioCodec> getAudioCodecs() {
+        MediaDescription md = getMediaDescription(AUDIO);
+        if (md == null) return new ArrayList<AudioCodec>();
+
+        // FIXME: what happens if ptime is missing
+        int ptime = 20;
+        try {
+            String value = md.getAttribute(PTIME);
+            if (value != null) ptime = Integer.parseInt(value);
+        } catch (Throwable t) {
+            Log.w(TAG, "getCodecs(): ignored: " + t);
+        }
+
+        List<AudioCodec> codecs = new ArrayList<AudioCodec>();
+        Vector<AttributeField> v = (Vector<AttributeField>)
+                md.getAttributeFields();
+        for (AttributeField field : v) {
             try {
-                formats.add(Integer.parseInt(id));
-            } catch (NumberFormatException e) {
-                // ignore
+                if (RTPMAP.equals(field.getName())) {
+                    AudioCodec codec = parseAudioCodec(field.getValue(), ptime);
+                    if (codec != null) codecs.add(codec);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "getCodecs(): ignored: " + t);
             }
         }
-        return formats;
+        return codecs;
     }
 
     public MediaDescription getMediaDescription(String typeWanted) {
