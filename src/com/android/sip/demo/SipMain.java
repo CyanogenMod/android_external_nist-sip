@@ -495,20 +495,20 @@ public class SipMain extends PreferenceActivity
         menu.clear();
         switch (state) {
         case READY_TO_CALL:
-            menu.add(0, MENU_REGISTER, 0, R.string.menu_register);
-            menu.add(0, MENU_CALL, 0, R.string.menu_call);
+            menu.add(0, MENU_REGISTER, 0, "Register");
+            menu.add(0, MENU_CALL, 0, "Call");
             break;
         case IN_CALL:
             menu.add(0, MENU_SPEAKER_MODE, 0, (mSpeakerMode ?
-                    R.string.menu_incall_mode : R.string.menu_speaker_mode));
-            menu.add(0, MENU_SEND_DTMF_1, 0, R.string.menu_send_dtmf);
+                    "Speaker OFF" : "Speaker ON"));
+            menu.add(0, MENU_SEND_DTMF_1, 0, "Send DTMF_1");
             menu.add(0, MENU_MUTE, 0,
-                    (muted ? R.string.menu_unmute : R.string.menu_mute));
+                    (muted ? "Unmute" : "Mute"));
             menu.add(0, MENU_HOLD, 0,
-                    (onHold ? R.string.menu_unhold : R.string.menu_hold));
+                    (onHold ? "Unhold" : "Hold"));
             /* pass through */
         default:
-            menu.add(0, MENU_HANGUP, 0, R.string.menu_hangup);
+            menu.add(0, MENU_HANGUP, 0, "Hang up");
         }
         return true;
     }
@@ -555,24 +555,6 @@ public class SipMain extends PreferenceActivity
 
     private String getPeerUri() {
         return getText(mPeerUri);
-    }
-
-    private void setValue(EditTextPreference pref, String value) {
-        pref.setSummary((value == null) ? "" : value.trim());
-    }
-
-    private void setSummary(Preference pref, int fieldNameId, String v) {
-        setSummary(pref, fieldNameId, v, true);
-    }
-
-    private void setSummary(Preference pref, int fieldNameId, String v,
-            boolean required) {
-        String formatString = required
-                ? getString(R.string.field_not_set)
-                : getString(R.string.field_not_set_optional);
-        pref.setSummary(TextUtils.isEmpty(v)
-                ? String.format(formatString, getString(fieldNameId))
-                : v);
     }
 
     private SipSessionState getCallState() {

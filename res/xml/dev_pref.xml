@@ -15,54 +15,54 @@
 -->
 
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
-        android:title="@string/dev_pref_title">
+        android:title="SIP test (build 111)">
     <Preference
         android:key="call_status"
-        android:title="@string/call_status_title"
+        android:title="Call status"
         />
 
     <EditTextPreference
         android:key="peer"
-        android:title="@string/peer_title"
-        android:defaultValue="@string/peer_summary"
-        android:summary="@string/peer_summary"
-        android:dialogTitle="@string/peer_title"
+        android:title="Who to call?"
+        android:defaultValue="test@192.168.1.1:5060"
+        android:summary="test@192.168.1.1:5060"
+        android:dialogTitle="Who to call?"
         android:singleLine="true"/>
 
     <EditTextPreference
         android:key="server_address"
-        android:title="@string/server_address_title"
-        android:defaultValue="@string/server_address_summary"
-        android:summary="@string/server_address_summary"
-        android:dialogTitle="@string/server_address_title"
+        android:title="Server address"
+        android:defaultValue=""
+        android:summary=""
+        android:dialogTitle="Server address"
         android:singleLine="true"/>
 
     <EditTextPreference
         android:key="password"
-        android:title="@string/password_title"
-        android:summary="@string/password_summary"
-        android:dialogTitle="@string/password_title"
+        android:title="Password"
+        android:summary="Click to enter password"
+        android:dialogTitle="Password"
         android:password="true"
         android:singleLine="true"/>
 
     <EditTextPreference
         android:key="display_name"
-        android:title="@string/display_name_title"
-        android:defaultValue="@string/display_name_summary"
-        android:summary="@string/display_name_summary"
-        android:dialogTitle="@string/display_name_title"
+        android:title="Display name"
+        android:defaultValue="never mind"
+        android:summary="never mind"
+        android:dialogTitle="Display name"
         android:singleLine="true"/>
 
     <EditTextPreference
         android:key="proxy_address"
-        android:title="@string/proxy_address_title"
-        android:defaultValue="@string/proxy_address_summary"
-        android:summary="@string/proxy_address_summary"
-        android:dialogTitle="@string/proxy_address_title"
+        android:title="Outbound proxy address"
+        android:defaultValue=""
+        android:summary=""
+        android:dialogTitle="Outbound proxy address"
         android:singleLine="true"/>
 
     <Preference
         android:key="my_ip"
-        android:title="@string/my_ip_title"
+        android:title="My IP"
         />
 </PreferenceScreen>
