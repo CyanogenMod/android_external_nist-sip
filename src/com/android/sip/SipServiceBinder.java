@@ -86,6 +86,10 @@ public class SipServiceBinder extends Service {
             closeReceiver(localProfile);
         }
 
+        public boolean isOpened(String localProfileUri) {
+            return isOpened(localProfileUri);
+        }
+
         public ISipSession createSession(SipProfile localProfile,
                 ISipSessionListener listener) {
             if (!mConnected) return null;
@@ -174,6 +178,10 @@ public class SipServiceBinder extends Service {
         String key = localProfile.getUri().toString();
         SipCallReceiver receiver = mSipReceivers.remove(key);
         if (receiver != null) receiver.close();
+    }
+
+    private synchronized boolean isOpened(String localProfileUri) {
+        return mSipReceivers.containsKey(localProfileUri);
     }
 
     private synchronized void onConnectivityChanged(

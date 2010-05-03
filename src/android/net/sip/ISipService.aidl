@@ -27,6 +27,7 @@ interface ISipService {
     void openToReceiveCalls(in SipProfile localProfile,
             String incomingCallBroadcastAction);
     void close(in SipProfile localProfile);
+    boolean isOpened(String localProfileUri);
 
     ISipSession createSession(in SipProfile localProfile,
             in ISipSessionListener listener);

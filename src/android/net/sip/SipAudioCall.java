@@ -89,7 +89,7 @@ public interface SipAudioCall {
     void toggleMute();
     boolean isOnHold();
     boolean isMuted();
-    void sendDtmf();
+    void sendDtmf(int code);
     boolean isInCall();
     SipSessionState getState();
     ISipSession getSipSession();

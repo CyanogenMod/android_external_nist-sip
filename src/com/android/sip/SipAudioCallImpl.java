@@ -60,6 +60,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private static final boolean RELEASE_SOCKET = true;
     private static final boolean DONT_RELEASE_SOCKET = false;
     private static final String AUDIO = "audio";
+    private static final int DTMF = 101;
 
     private Context mContext;
     private SipProfile mLocalProfile;
@@ -389,7 +390,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
                         getMediaDescription(codec));
             }
             sdpBuilder.addMediaAttribute(AUDIO, "rtpmap",
-                    "101 telephone-event/8000");
+                    DTMF + " telephone-event/8000");
             // FIXME: deal with vbr codec
             sdpBuilder.addMediaAttribute(AUDIO, "ptime", "20");
         } catch (SdpException e) {
@@ -423,10 +424,10 @@ public class SipAudioCallImpl extends SipSessionAdapter
                 .setMode(AudioManager.MODE_NORMAL);
     }
 
-    public synchronized void sendDtmf() {
+    public synchronized void sendDtmf(int code) {
         if (mSipSession == null) return;
         if (SipSessionState.IN_CALL == getState()) {
-            mRtpSession.sendDtmf(1);
+            mRtpSession.sendDtmf(code);
         }
     }
 
@@ -482,6 +483,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
             mCodec = getCodec(peerSd);
             mRtpSession = new AudioStream(mMediaSocket);
             mRtpSession.setCodec(convert(mCodec), mCodec.payloadType);
+            mRtpSession.setDtmf(DTMF);
             mRtpSession.prepare();
             if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
             if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();

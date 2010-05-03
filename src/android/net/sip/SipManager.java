@@ -53,18 +53,59 @@ public class SipManager {
         return sSipService;
     }
 
-    public static SipAudioCall createSipAudioCall(Context context,
-            SipProfile localProfile, SipAudioCall.Listener listener) {
+    public static void openToReceiveCalls(SipProfile localProfile,
+            String incomingCallBroadcastAction) throws SipException {
+        try {
+            sSipService.openToReceiveCalls(localProfile,
+                    incomingCallBroadcastAction);
+        } catch (RemoteException e) {
+            throw new SipException("openToReceiveCalls()", e);
+        }
+    }
+
+    public static void close(SipProfile localProfile) throws SipException {
+        try {
+            sSipService.close(localProfile);
+        } catch (RemoteException e) {
+            throw new SipException("close()", e);
+        }
+    }
+
+    public static boolean isOpened(String localProfileUri) throws SipException {
+        try {
+            return sSipService.isOpened(localProfileUri);
+        } catch (RemoteException e) {
+            throw new SipException("isOpened()", e);
+        }
+    }
+
+    public static SipAudioCall makeAudioCall(Context context,
+            SipProfile localProfile, SipProfile peerProfile,
+            SipAudioCall.Listener listener) throws SipException {
         SipAudioCall call = new SipAudioCallImpl(context, localProfile);
         call.setListener(listener);
+        call.makeCall(peerProfile, sSipService);
         return call;
     }
 
-    public static SipAudioCall createSipAudioCall(Context context,
-            String sessionId, byte[] offerSd, SipAudioCall.Listener listener)
+    public static SipAudioCall takeAudioCall(Context context,
+            Intent incomingCallIntent, SipAudioCall.Listener listener)
             throws SipException {
+        if (incomingCallIntent == null) return null;
+
+        String callId = getCallId(incomingCallIntent);
+        if (callId == null) {
+            throw new SipException("Call ID missing in incoming call intent");
+        }
+
+        byte[] offerSd = getOfferSessionDescription(incomingCallIntent);
+        if (offerSd == null) {
+            throw new SipException("Session description missing in incoming "
+                    + "call intent");
+        }
+
         try {
-            ISipSession session = sSipService.getPendingSession(sessionId);
+            ISipSession session = sSipService.getPendingSession(callId);
             if (session == null) return null;
             SipAudioCall call = new SipAudioCallImpl(
                     context, session.getLocalProfile());
@@ -76,6 +117,29 @@ public class SipManager {
         }
     }
 
+    private static SipAudioCall createSipAudioCall(Context context,
+            String callId, byte[] offerSd, SipAudioCall.Listener listener)
+            throws SipException {
+        try {
+            ISipSession session = sSipService.getPendingSession(callId);
+            if (session == null) return null;
+            SipAudioCall call = new SipAudioCallImpl(
+                    context, session.getLocalProfile());
+            call.attachCall(session, offerSd);
+            call.setListener(listener);
+            return call;
+        } catch (RemoteException e) {
+            throw new SipException("createSipAudioCall()", e);
+        }
+    }
+
+    public static boolean isIncomingCallIntent(Intent intent) {
+        if (intent == null) return false;
+        String callId = getCallId(intent);
+        byte[] offerSd = getOfferSessionDescription(intent);
+        return ((callId != null) && (offerSd != null));
+    }
+
     public static String getCallId(Intent incomingCallIntent) {
         return incomingCallIntent.getStringExtra(CALL_ID_KEY);
     }
@@ -84,6 +148,7 @@ public class SipManager {
         return incomingCallIntent.getByteArrayExtra(OFFER_SD_KEY);
     }
 
+    /** @hide */
     public static Intent createIncomingCallBroadcast(String action,
             String callId, byte[] sessionDescription) {
         Intent intent = new Intent(action);

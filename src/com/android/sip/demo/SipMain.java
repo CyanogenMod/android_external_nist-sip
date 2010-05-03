@@ -162,10 +162,8 @@ public class SipMain extends PreferenceActivity
         // TODO: resolve offerSd to differnt apps
         Intent intent = getIntent();
         Log.v(TAG, "receiveCall(): any call comes in? " + intent);
-        if ((mSipService != null) && (intent != null)) {
-            String sessionId = SipManager.getCallId(intent);
-            byte[] offerSd = SipManager.getOfferSessionDescription(intent);
-            if (sessionId != null) createSipAudioCall(sessionId, offerSd);
+        if ((mSipService != null) && SipManager.isIncomingCallIntent(intent)) {
+            createSipAudioCall(intent);
             setIntent(null);
         }
     }
@@ -179,10 +177,10 @@ public class SipMain extends PreferenceActivity
         }
     }
 
-    private void createSipAudioCall(String sessionId, byte[] offerSd) {
+    private void createSipAudioCall(Intent intent) {
         // TODO: what happens if another call is going
         try {
-            mAudioCall = SipManager.createSipAudioCall(this, sessionId, offerSd,
+            mAudioCall = SipManager.takeAudioCall(this, intent,
                     createListener());
             if (mAudioCall == null) {
                 throw new SipException("no session to handle audio call");
@@ -192,12 +190,12 @@ public class SipMain extends PreferenceActivity
         }
     }
 
-    private void createSipAudioCall() throws Exception {
+    private void makeAudioCall() throws Exception {
         if ((mAudioCall == null) || mChanged) {
             if (mChanged) register();
             closeAudioCall();
-            mAudioCall = SipManager.createSipAudioCall(this, createLocalProfile(),
-                    createListener());
+            mAudioCall = SipManager.makeAudioCall(this, createLocalProfile(),
+                    createPeerSipProfile(), createListener());
             Log.v(TAG, "info changed; recreate AudioCall isntance");
         }
     }
@@ -376,8 +374,7 @@ public class SipMain extends PreferenceActivity
 
     private void makeCall() {
         try {
-            createSipAudioCall();
-            mAudioCall.makeCall(createPeerSipProfile(), mSipService);
+            makeAudioCall();
         } catch (Exception e) {
             Log.e(TAG, "makeCall()", e);
             setCallStatus(e);
@@ -455,7 +452,7 @@ public class SipMain extends PreferenceActivity
     }
 
     private void sendDtmf() {
-        mAudioCall.sendDtmf();
+        mAudioCall.sendDtmf(1);
     }
 
     private void setSpeakerMode() {
