@@ -27,6 +27,9 @@ import android.os.Looper;
 import android.util.Log;
 
 // TODO: throw away this class after moving SIP classes to framework
+// This class helps to get IBinder instance of a service in a blocking call.
+// The method cannot be called in app's main thread as the ServiceConnection
+// callback will.
 class BinderHelper<T extends IInterface> {
     private Context mContext;
     private IBinder mBinder;

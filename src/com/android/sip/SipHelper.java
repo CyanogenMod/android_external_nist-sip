@@ -260,7 +260,8 @@ class SipHelper {
     public ClientTransaction sendReinvite(Dialog dialog,
             SessionDescription sessionDescription) throws SipException {
         try {
-            dialog.incrementLocalSequenceNumber();
+            // SipStack increases seq number automatically
+            // so no need to call dialog.incrementLocalSequenceNumber().
             Request request = dialog.createRequest(Request.INVITE);
             request.setContent(sessionDescription.getContent(),
                     mHeaderFactory.createContentTypeHeader(
