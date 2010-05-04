@@ -90,6 +90,10 @@ public class SipServiceBinder extends Service {
             return isOpened(localProfileUri);
         }
 
+        public boolean isRegistered(String localProfileUri) {
+            return isRegistered(localProfileUri);
+        }
+
         public ISipSession createSession(SipProfile localProfile,
                 ISipSessionListener listener) {
             if (!mConnected) return null;
@@ -109,6 +113,7 @@ public class SipServiceBinder extends Service {
     };
 
     private ISipSessionListener mCallReceiver = new SipSessionAdapter() {
+        @Override
         public void onRinging(ISipSession session, SipProfile caller,
                 byte[] sessionDescription) {
             try {
@@ -127,9 +132,50 @@ public class SipServiceBinder extends Service {
             }
         }
 
+        @Override
         public void onError(ISipSession session, String errorClass,
                 String message) {
             Log.d(TAG, "sip session error: " + errorClass + ": " + message);
+        }
+
+        @Override
+        public void onRegistrationDone(ISipSession session, int duration) {
+            try {
+                SipProfile localProfile = session.getLocalProfile();
+                SipCallReceiver receiver = getReceiver(localProfile);
+                Log.d(TAG, "registration done: " + localProfile.getUri());
+                if (receiver != null) receiver.onRegistrationDone();
+            } catch (RemoteException e) {
+                // should not happen with a local call
+                Log.e(TAG, "onRegistrationDone()", e);
+            }
+        }
+
+        @Override
+        public void onRegistrationFailed(ISipSession session, String className,
+                String message) {
+            try {
+                SipProfile localProfile = session.getLocalProfile();
+                SipCallReceiver receiver = getReceiver(localProfile);
+                Log.d(TAG, "registration failed: " + localProfile.getUri());
+                if (receiver != null) receiver.onRegistrationFailed();
+            } catch (RemoteException e) {
+                // should not happen with a local call
+                Log.e(TAG, "onRegistrationFailed()", e);
+            }
+        }
+
+        @Override
+        public void onRegistrationTimeout(ISipSession session) {
+            try {
+                SipProfile localProfile = session.getLocalProfile();
+                SipCallReceiver receiver = getReceiver(localProfile);
+                Log.d(TAG, "registration timed out: " + localProfile.getUri());
+                if (receiver != null) receiver.onRegistrationFailed();
+            } catch (RemoteException e) {
+                // should not happen with a local call
+                Log.e(TAG, "onRegistrationTimeout()", e);
+            }
         }
     };
 
@@ -184,6 +230,15 @@ public class SipServiceBinder extends Service {
         return mSipReceivers.containsKey(localProfileUri);
     }
 
+    private synchronized boolean isRegistered(String localProfileUri) {
+        SipCallReceiver receiver = mSipReceivers.get(localProfileUri);
+        if (receiver != null) {
+            return receiver.isRegistered();
+        } else {
+            return false;
+        }
+    }
+
     private synchronized void onConnectivityChanged(
             String type, boolean connected) {
         if (type.equals(mNetworkType)) {
@@ -234,6 +289,7 @@ public class SipServiceBinder extends Service {
     private class SipCallReceiver {
         private SipProfile mLocalProfile;
         private String mIncomingCallBroadcastAction;
+        private boolean mRegistered;
 
         public SipCallReceiver(SipProfile localProfile,
                 String incomingCallBroadcastAction) {
@@ -268,6 +324,18 @@ public class SipServiceBinder extends Service {
                 // should never happen with a local call
                 Log.e(TAG, "processCall()", e);
             }
+        }
+
+        public boolean isRegistered() {
+            return mRegistered;
+        }
+
+        public void onRegistrationDone() {
+            mRegistered = true;
+        }
+
+        public void onRegistrationFailed() {
+            mRegistered = false;
         }
     }
 
