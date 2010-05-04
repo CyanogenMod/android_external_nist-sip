@@ -381,17 +381,8 @@ bool AudioStream::decode()
             continue;
         }
 
-        if (mRemoteTimestamp != 0) {
-            if ((int)(header[1] - mRemoteTimestamp) < 0) {
-                LOGD("decrescent timestamp (difference = %d)",
-                    header[1] - mRemoteTimestamp);
-                continue;
-            }
-            if (header[2] != mRemoteSsrc) {
-                LOGD("wrong ssrc (%X != %X)", mRemoteSsrc, header[2]);
-                continue;
-            }
-        }
+        mRemoteTimestamp = header[1];
+        mRemoteSsrc = header[2];
 
         length = mCodec->decode(samples, &packet[offset], length) * 2;
         if (length <= 0) {
@@ -399,8 +390,6 @@ bool AudioStream::decode()
             continue;
         }
 
-        mRemoteTimestamp = header[1];
-        mRemoteSsrc = header[2];
 
         // Here we implement a simple jitter control for the incoming packets.
         // Ideally there should be only one packet every time we try to read
