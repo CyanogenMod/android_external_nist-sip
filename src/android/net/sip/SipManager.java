@@ -79,6 +79,14 @@ public class SipManager {
         }
     }
 
+    public static boolean isRegistered(String localProfileUri) throws SipException {
+        try {
+            return sSipService.isRegistered(localProfileUri);
+        } catch (RemoteException e) {
+            throw new SipException("isRegistered()", e);
+        }
+    }
+
     public static SipAudioCall makeAudioCall(Context context,
             SipProfile localProfile, SipProfile peerProfile,
             SipAudioCall.Listener listener) throws SipException {

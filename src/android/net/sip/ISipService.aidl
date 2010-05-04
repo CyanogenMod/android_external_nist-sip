@@ -28,6 +28,7 @@ interface ISipService {
             String incomingCallBroadcastAction);
     void close(in SipProfile localProfile);
     boolean isOpened(String localProfileUri);
+    boolean isRegistered(String localProfileUri);
 
     ISipSession createSession(in SipProfile localProfile,
             in ISipSessionListener listener);
