@@ -89,7 +89,7 @@ public class SipMain extends PreferenceActivity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        addPreferencesFromResource(R.xml.dev_pref);
+        addPreferencesFromResource(com.android.settings.sip.R.xml.dev_pref);
 
         mCallStatus = getPreferenceScreen().findPreference("call_status");
         mPeerUri = setupEditTextPreference("peer");

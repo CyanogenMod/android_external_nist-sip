@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2010 The Android Open Source Project
+
+     Licensed under the Apache License, Version 2.0 (the "License");
+     you may not use this file except in compliance with the License.
+     You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+-->
+
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Sip Account Settings</string>
+    <string name="sip_settings_activity_title">Sip Settings Activity</string>
+    <string name="add_sip_account">Add SIP account</string>
+    <string name="sip_account_list">SIP accounts</string>
+
+    <string name="sip_menu_save">Save</string>
+    <string name="sip_menu_discard">Discard</string>
+
+    <string name="alert_dialog_ok">OK</string>
+
+
+    <string name="sip_edit_title">Edit your SIP account</string>
+
+    <string name="profile_name_title">Name</string>
+    <string name="profile_name_summary">Not set</string>
+    <string name="domain_address_title">Domain</string>
+    <string name="domain_address_summary"></string>
+    <string name="username_title">Username</string>
+    <string name="username_summary">Enter the username</string>
+    <string name="password_title">Password</string>
+    <string name="password_summary">Click to enter password</string>
+    <string name="display_name_title">Display name</string>
+    <string name="display_name_summary">Your display name</string>
+    <string name="proxy_address_title">Outbound Proxy address</string>
+    <string name="proxy_address_summary"></string>
+    <string name="port_title">Port Number</string>
+    <string name="port_summary">5060</string>
+    <string name="transport_title">Transport Type</string>
+    <string name="transport_summary">TCP</string>
+
+    <string name="sip_menu_register">Register the account</string>
+    <string name="sip_menu_unregister">Unregister the account</string>
+    <string name="sip_menu_edit">Edit the account</string>
+    <string name="sip_menu_delete">Delete the account</string>
+
+    <string name="empty_alert"> cannot be empty</string>
+
+    <!-- Do not translate the following strings. Used for the preference keys -->
+    <string name="profile_name">ProfileName</string>
+    <string name="domain_address">ServerAddress</string>
+    <string name="username">UserName</string>
+    <string name="password">Password</string>
+    <string name="display_name">DisplayName</string>
+    <string name="proxy_address">ProxyAddress</string>
+    <string name="port">Port</string>
+    <string name="transport">Protocol</string>
+
+</resources>

@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-        package="com.android.sip.demo">
+        package="com.android.settings.sip">
     <uses-permission android:name="android.permission.INTERNET"></uses-permission>
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"></uses-permission>
 	<uses-permission android:name="android.permission.RECORD_AUDIO"></uses-permission>
@@ -17,8 +17,8 @@
 	<uses-permission android:name="android.permission.VIBRATE" ></uses-permission>
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" ></uses-permission>
 
-    <application android:label="Sip Joy 2">
-        <activity android:name=".SipMain"
+    <application android:label="Sip Joy 3">
+        <activity android:name="com.android.sip.demo.SipMain"
                   android:launchMode="singleTop"
                   android:configChanges="orientation|keyboardHidden">
             <intent-filter>
@@ -28,8 +28,21 @@
             </intent-filter>
         </activity>
 
+        <activity android:label="Sip Settings"
+                  android:name=".SipSettings"
+                  android:launchMode="singleTop"
+                  android:configChanges="orientation|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".SipEditor"
+                android:configChanges="orientation|keyboardHidden">
+        </activity>
+
         <receiver
-            android:name=".IncomingCallReceiver">
+            android:name="com.android.sip.demo.IncomingCallReceiver">
             <intent-filter>
                 <action android:name="com.android.sip.demo.SipMain" />
             </intent-filter>
