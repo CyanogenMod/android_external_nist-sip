@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define LOG_TAG "RtpSocket"
 #include <utils/Log.h>
@@ -167,7 +169,7 @@ static jint create(JNIEnv *env, jobject thiz, jstring jAddress)
     }
 
     int fd = socket(ss.ss_family, SOCK_DGRAM, 0);
-    int len = sizeof(ss);
+    socklen_t len = sizeof(ss);
     if (fd == -1 || bind(fd, (sockaddr *)&ss, sizeof(ss)) != 0 ||
         getsockname(fd, (sockaddr *)&ss, &len) != 0) {
         throwSocketException(env, errno);

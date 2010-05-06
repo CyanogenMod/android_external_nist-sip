@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
+#include <arpa/inet.h>
 
 #include <cutils/atomic.h>
 
