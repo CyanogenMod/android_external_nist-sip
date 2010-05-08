@@ -269,7 +269,7 @@ class SipHelper {
 
             ClientTransaction clientTransaction =
                     mSipProvider.getNewClientTransaction(request);
-            clientTransaction.sendRequest();
+            dialog.sendRequest(clientTransaction);
             return clientTransaction;
         } catch (ParseException e) {
             throw new SipException("sendReinvite()", e);
