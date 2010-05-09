@@ -22,8 +22,6 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <sys/time.h>
-#include <time.h>
 
 #define LOG_TAG "RtpSocket"
 #include <utils/Log.h>
@@ -65,9 +63,9 @@ RtpSocket *getRtpSocket(JNIEnv *env, jobject jRtpSocket, bool associated)
         LOGE("native is NULL");
         return NULL;
     }
-    if ((rtpSocket->mRemote.ss_family == rtpSocket->mFamily) != associated) {
+    if (associated && (rtpSocket->mRemote.ss_family != rtpSocket->mFamily)) {
         jniThrowException(env, "java/lang/IllegalStateException",
-            strerror(associated ? ENOTCONN : EISCONN));
+                strerror(ENOTCONN));
         return NULL;
     }
     return rtpSocket;
@@ -169,7 +167,7 @@ static jint create(JNIEnv *env, jobject thiz, jstring jAddress)
     }
 
     int fd = socket(ss.ss_family, SOCK_DGRAM, 0);
-    socklen_t len = sizeof(ss);
+    int len = sizeof(ss);
     if (fd == -1 || bind(fd, (sockaddr *)&ss, sizeof(ss)) != 0 ||
         getsockname(fd, (sockaddr *)&ss, &len) != 0) {
         throwSocketException(env, errno);

@@ -45,6 +45,16 @@ public class AudioStream {
     }
 
     /**
+     * Closes the stream. Once closed, the stream stops sending and receiving,
+     * and relinquishes the ownership of the {@link RtpSocket}.
+     */
+    public void close() {
+        stopSending();
+        stopReceiving();
+        mRtpSocket.vacate();
+    }
+
+    /**
      * Returns the bound {@link RtpSocket}.
      */
     public RtpSocket getRtpSocket() {

@@ -59,6 +59,10 @@ public class RtpSocket {
         mInUse = true;
     }
 
+    synchronized void vacate() {
+        mInUse = false;
+    }
+
     /**
      * Returns the network address of the local host.
      */
