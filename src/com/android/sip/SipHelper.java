@@ -330,26 +330,6 @@ class SipHelper {
         }
     }
 
-    /**
-     * @param event the INVITE request event
-     */
-    public void sendReInviteOk(RequestEvent event, SipProfile localProfile)
-            throws SipException {
-        try {
-            Request request = event.getRequest();
-            Response response = mMessageFactory.createResponse(Response.OK,
-                    request);
-            response.addHeader(createContactHeader(localProfile));
-            ServerTransaction transaction = event.getServerTransaction();
-
-            if (transaction.getState() != TransactionState.COMPLETED) {
-                transaction.sendResponse(response);
-            }
-        } catch (ParseException e) {
-            throw new SipException("sendReInviteOk()", e);
-        }
-    }
-
     public void sendInviteBusyHere(RequestEvent event,
             ServerTransaction inviteTransaction) throws SipException {
         try {
