@@ -23,7 +23,6 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.sip.ISipService;
 import android.net.sip.ISipSession;
 import android.net.sip.ISipSessionListener;
 import android.net.sip.SipProfile;
@@ -81,8 +80,6 @@ public class SipMain extends PreferenceActivity
     private boolean mChanged;
     private boolean mSpeakerMode;
 
-    private ISipService mSipService;
-
     private BroadcastReceiver mIncomingCallReceiver =
             new IncomingCallReceiver();
 
@@ -123,7 +120,6 @@ public class SipMain extends PreferenceActivity
                 });
         setCallStatus();
 
-        final Intent intent = getIntent();
         new Thread(new Runnable() {
             public void run() {
                 final String localIp = getLocalIp();
@@ -133,10 +129,7 @@ public class SipMain extends PreferenceActivity
                     }
                 });
 
-                // SipService must be obtained from non-main thread
-                mSipService = SipManager.getSipService(SipMain.this);
-                Log.v(TAG, "got SipService: " + mSipService);
-
+                SipManager.initialize(SipMain.this);
                 openToReceiveCalls();
                 receiveCall();
             }
@@ -162,7 +155,7 @@ public class SipMain extends PreferenceActivity
         // TODO: resolve offerSd to differnt apps
         Intent intent = getIntent();
         Log.v(TAG, "receiveCall(): any call comes in? " + intent);
-        if ((mSipService != null) && SipManager.isIncomingCallIntent(intent)) {
+        if (SipManager.isIncomingCallIntent(intent)) {
             createSipAudioCall(intent);
             setIntent(null);
         }
@@ -170,7 +163,7 @@ public class SipMain extends PreferenceActivity
 
     private synchronized void openToReceiveCalls() {
         try {
-            mSipService.openToReceiveCalls(createLocalProfile(),
+            SipManager.openToReceiveCalls(createLocalProfile(),
                     INCOMING_CALL_ACTION);
         } catch (Exception e) {
             setCallStatus(e);
@@ -284,28 +277,36 @@ public class SipMain extends PreferenceActivity
     private SipAudioCall.Listener createListener() {
         return new SipAudioCall.Adapter() {
             public void onChanged(SipAudioCall call) {
+                Log.v(TAG, "onChanged(): " + call + " <--> " + mAudioCall);
+                if (mAudioCall != call) return;
                 setCallStatus();
             }
 
             public void onCalling(SipAudioCall call) {
+                if (mAudioCall != call) return;
                 mSipSession = call.getSipSession();
                 setCallStatus();
             }
 
             public void onRinging(SipAudioCall call, SipProfile caller) {
+                Log.v(TAG, "onRinging(): " + call + " <--> " + mAudioCall);
+                if (mAudioCall != null) return;
                 mSipSession = call.getSipSession();
                 showCallNotificationDialog(caller);
                 setCallStatus();
             }
 
             public void onCallEstablished(SipAudioCall call) {
+                Log.v(TAG, "onCallEstablished(): " + call + " <--> " + mAudioCall);
+                if (mAudioCall != call) return;
                 setAllPreferencesEnabled(false);
                 setCallStatus();
             }
 
             public void onCallEnded(SipAudioCall call) {
+                Log.v(TAG, "onCallEnded(): " + call + " <--> " + mAudioCall);
+                if (mAudioCall != call) return;
                 if (mDialog != null) {
-
                     runOnUiThread(new Runnable() {
                         public void run() {
                             dismissDialog(mDialog.getId());
@@ -314,13 +315,17 @@ public class SipMain extends PreferenceActivity
                 }
                 setCallStatus();
                 mSipSession = null;
+                mAudioCall = null;
                 setAllPreferencesEnabled(true);
             }
 
             public void onError(SipAudioCall call, String errorMessage) {
+                Log.v(TAG, "onError(): " + call + " <--> " + mAudioCall);
+                if (mAudioCall != call) return;
                 mError = new SipException(errorMessage);
                 setCallStatus();
                 mSipSession = null;
+                mAudioCall = null;
                 setAllPreferencesEnabled(true);
             }
         };
@@ -356,14 +361,10 @@ public class SipMain extends PreferenceActivity
         try {
             if (mLocalProfile == null) createLocalProfile();
             if (mChanged) {
-                ISipSession session = mSipService.createSession(mLocalProfile,
-                    new SipSessionAdapter());
-                session.unregister();
+                SipManager.unregister(mLocalProfile, null);
             }
-            ISipSession session = mSipService.createSession(
-                    createLocalProfile(), createRegistrationListener());
-            session.register(EXPIRY_TIME);
-            mSipSession = session;
+            SipManager.register(createLocalProfile(), EXPIRY_TIME,
+                    createRegistrationListener());
             mChanged = false;
             setCallStatus();
         } catch (Exception e) {

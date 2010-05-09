@@ -20,7 +20,6 @@ package com.android.settings.sip;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.net.sip.ISipService;
 import android.net.sip.ISipSession;
 import android.net.sip.ISipSessionListener;
 import android.net.sip.SipProfile;
@@ -78,7 +77,6 @@ public class SipSettings extends PreferenceActivity {
     private String mProfilesDirectory;
 
     private SipProfile mProfile;
-    private ISipService mSipService;
 
     private PreferenceCategory mSipListContainer;
     private Map<String, SipPreference> mSipPreferenceMap;
@@ -118,13 +116,7 @@ public class SipSettings extends PreferenceActivity {
         registerForContextMenu(getListView());
         retrieveSipListFromStorage();
 
-        new Thread(new Runnable() {
-            public void run() {
-                // SipService must be obtained from non-main thread
-                mSipService = SipManager.getSipService(SipSettings.this);
-                Log.v(TAG, "got SipService: " + mSipService);
-            }
-        }).start();
+        SipManager.initialize(this);
     }
 
     private void retrieveSipListFromStorage() {
@@ -227,21 +219,16 @@ public class SipSettings extends PreferenceActivity {
         case CONTEXT_MENU_REGISTER_ID:
             if (p != null) {
                 try {
-                    openToReceiveCalls(p);
-                    ISipSession session = mSipService.createSession(p,
-                            createSessionAdapter());
-                    session.register(EXPIRY_TIME);
+                    SipManager.openToReceiveCalls(p, INCOMING_CALL_ACTION);
                 } catch (Exception e) {
-                    Log.e(TAG, "register failed:" + e.toString());
+                    Log.e(TAG, "register failed", e);
                 }
             }
             return true;
         case CONTEXT_MENU_UNREGISTER_ID:
             if (p != null) {
                 try {
-                    ISipSession session = mSipService.createSession(p,
-                            createSessionAdapter());
-                    session.unregister();
+                    SipManager.close(p);
                 } catch (Exception e) {
                     Log.e(TAG, "unregister failed:" + e);
                 }
@@ -363,13 +350,5 @@ public class SipSettings extends PreferenceActivity {
                 setSessionSummary(session, "Registration timed out");
             }
         };
-    }
-
-    private synchronized void openToReceiveCalls(SipProfile p) {
-        try {
-            mSipService.openToReceiveCalls(p, INCOMING_CALL_ACTION);
-        } catch (Exception e) {
-            Log.e(TAG, "Can not openToReceiveCalls:" + e);
-        }
     }
 }

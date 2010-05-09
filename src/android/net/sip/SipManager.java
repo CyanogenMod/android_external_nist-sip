@@ -20,6 +20,7 @@ import com.android.sip.SipAudioCallImpl;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Looper;
 import android.os.RemoteException;
 
 import javax.sip.SipException;
@@ -38,19 +39,31 @@ public class SipManager {
     }
 
 
-    /**
-     * ISipService must be obtained from non-main thread.
-     * (tentative; will be relaxed after integrated into framework)
-     */
-    public static ISipService getSipService(Context context) {
-        if (sSipService != null) return sSipService;
+    private static void createSipService(Context context) {
+        if (sSipService != null) return;
         if (sBinderHelper == null) {
             sBinderHelper = new BinderHelper<ISipService>(
                     context, ISipService.class);
             sBinderHelper.startService();
         }
         sSipService = ISipService.Stub.asInterface(sBinderHelper.getBinder());
-        return sSipService;
+    }
+
+    /**
+     * Initializes the background SIP service. Will be removed once the SIP
+     * service is integrated into framework.
+     */
+    public static void initialize(final Context context) {
+        // ISipService must be created from non-main thread.
+        if (Looper.getMainLooper().getThread() == Thread.currentThread()) {
+            new Thread(new Runnable() {
+                public void run() {
+                    createSipService(context);
+                }
+            }).start();
+        } else {
+            createSipService(context);
+        }
     }
 
     public static void openToReceiveCalls(SipProfile localProfile,
@@ -163,5 +176,26 @@ public class SipManager {
         intent.putExtra(CALL_ID_KEY, callId);
         intent.putExtra(OFFER_SD_KEY, sessionDescription);
         return intent;
+    }
+
+    public static void register(SipProfile localProfile, int expiryTime,
+            ISipSessionListener listener) throws SipException {
+        try {
+            ISipSession session = sSipService.createSession(
+                    localProfile, listener);
+            session.register(expiryTime);
+        } catch (RemoteException e) {
+            throw new SipException("register()", e);
+        }
+    }
+    public static void unregister(SipProfile localProfile,
+            ISipSessionListener listener) throws SipException {
+        try {
+            ISipSession session = sSipService.createSession(
+                    localProfile, listener);
+            session.unregister();
+        } catch (RemoteException e) {
+            throw new SipException("unregister()", e);
+        }
     }
 }
