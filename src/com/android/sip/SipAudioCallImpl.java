@@ -515,8 +515,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private void stopCall(boolean releaseSocket) {
         Log.d(TAG, "stop audiocall");
         if (mRtpSession != null) {
-            mRtpSession.stopSending();
-            mRtpSession.stopReceiving();
+            mRtpSession.close();
             if (releaseSocket) {
                 //if (mMediaSocket != null) mMediaSocket.close();
                 mMediaSocket = null;
