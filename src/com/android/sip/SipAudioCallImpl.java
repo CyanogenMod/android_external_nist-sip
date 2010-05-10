@@ -480,7 +480,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     private void startCall(SdpSessionDescription peerSd) {
-        if (!mInCall) stopCall(DONT_RELEASE_SOCKET);
+        stopCall(DONT_RELEASE_SOCKET);
 
         mPeerSd = peerSd;
         String peerMediaAddress = peerSd.getPeerMediaAddress(AUDIO);
@@ -493,36 +493,33 @@ public class SipAudioCallImpl extends SipSessionAdapter
         int frameSize = sampleRate / 50; // 160
         try {
             // TODO: get sample rate from sdp
-            if (!mInCall) {
-                try {
-                    mMediaSocket.associate(InetAddress.getByName(peerMediaAddress),
-                            peerMediaPort);
-                } catch (java.net.SocketException e) {
-                    // TODO: allow to re-associate in RtpSocket
-                    Log.w(TAG, "RtpSocket.associate():" + e);
-                }
-                mCodec = getCodec(peerSd);
-                mRtpSession = new AudioStream(mMediaSocket);
-                mRtpSession.setCodec(convert(mCodec), mCodec.payloadType);
-                mRtpSession.setDtmf(DTMF);
-                mRtpSession.prepare();
-                if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
-                if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
+            mMediaSocket.associate(InetAddress.getByName(peerMediaAddress),
+                    peerMediaPort);
+            mCodec = getCodec(peerSd);
+            mRtpSession = new AudioStream(mMediaSocket);
+            mRtpSession.setCodec(convert(mCodec), mCodec.payloadType);
+            mRtpSession.setDtmf(DTMF);
+            mRtpSession.prepare();
+            Log.d(TAG, "start media: localPort=" + localPort + ", peer="
+                    + peerMediaAddress + ":" + peerMediaPort);
+            if (mHold) {
+                Log.d(TAG, "   on hold");
+                mRtpSession.stopSending();
+                mRtpSession.stopReceiving();
             } else {
-                if (mHold) {
-                    mRtpSession.stopSending();
-                    mRtpSession.stopReceiving();
-                } else {
-                    if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
-                    if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
+                if (!peerSd.isReceiveOnly(AUDIO)) {
+                    Log.d(TAG, "   start receiving");
+                    mRtpSession.startReceiving();
+                }
+                if (!peerSd.isSendOnly(AUDIO)) {
+                    Log.d(TAG, "   start sending");
+                    mRtpSession.startSending();
                 }
             }
             setInCallMode();
         } catch (Exception e) {
             Log.e(TAG, "call()", e);
         }
-        Log.d(TAG, " ~~~~~~~~~~~   start media: localPort=" + localPort
-                + ", peer=" + peerMediaAddress + ":" + peerMediaPort);
     }
 
     private void stopCall(boolean releaseSocket) {
@@ -530,7 +527,6 @@ public class SipAudioCallImpl extends SipSessionAdapter
         if (mRtpSession != null) {
             mRtpSession.close();
             if (releaseSocket) {
-                //if (mMediaSocket != null) mMediaSocket.close();
                 mMediaSocket = null;
             }
         }
