@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define LOG_TAG "RtpSocket"
 #include <utils/Log.h>
