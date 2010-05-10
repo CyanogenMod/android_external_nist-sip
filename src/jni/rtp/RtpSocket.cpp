@@ -169,7 +169,7 @@ static jint create(JNIEnv *env, jobject thiz, jstring jAddress)
     }
 
     int fd = socket(ss.ss_family, SOCK_DGRAM, 0);
-    int len = sizeof(ss);
+    socklen_t len = sizeof(ss);
     if (fd == -1 || bind(fd, (sockaddr *)&ss, sizeof(ss)) != 0 ||
         getsockname(fd, (sockaddr *)&ss, &len) != 0) {
         throwSocketException(env, errno);
