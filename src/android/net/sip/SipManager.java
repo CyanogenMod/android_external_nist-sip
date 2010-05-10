@@ -26,6 +26,26 @@ import android.os.RemoteException;
 import javax.sip.SipException;
 
 /**
+ * The class provides API for various SIP related tasks. Specifically, the API
+ * allows the application:
+ * <ul>
+ * <li>to register a {@link SipProfile} to have the background SIP service
+ *      listen to incoming calls and broadcast them with registered command
+ *      string. See
+ *      {@link #openToReceiveCalls(SipProfile, String, SipRegistrationListener)},
+ *      {@link #close(String)}, {@link #isOpened(String)} and
+ *      {@link isRegistered(String)}. It also facilitates handling of the
+ *      incoming call broadcast intent. See
+ *      {@link #isIncomingCallIntent(Intent)}, {@link #getCallId(Intent)},
+ *      {@link #getOfferSessionDescription(Intent)} and
+ *      {@link #takeAudioCall(Context, Intent, SipAudioCall.Listener)}.</li>
+ * <li>to make/take SIP-based audio calls. See
+ *      {@link #makeAudioCall(Context, SipProfile, SipProfile, SipAudioCall.Listener)}
+ *      and {@link #takeAudioCall(Context, Intent, SipAudioCall.Listener}.</li>
+ * <li>to register/unregister with a SIP service provider. See
+ *      {@link #register(SipProfile, int, ISipSessionListener)} and
+ *      {@link #unregister(SipProfile, ISipSessionListener)}.</li>
+ * </ul>
  * @hide
  */
 public class SipManager {
@@ -67,10 +87,11 @@ public class SipManager {
     }
 
     public static void openToReceiveCalls(SipProfile localProfile,
-            String incomingCallBroadcastAction) throws SipException {
+            String incomingCallBroadcastAction,
+            SipRegistrationListener listener) throws SipException {
         try {
             sSipService.openToReceiveCalls(localProfile,
-                    incomingCallBroadcastAction);
+                    incomingCallBroadcastAction, createRelay(listener));
         } catch (RemoteException e) {
             throw new SipException("openToReceiveCalls()", e);
         }
@@ -179,23 +200,79 @@ public class SipManager {
     }
 
     public static void register(SipProfile localProfile, int expiryTime,
-            ISipSessionListener listener) throws SipException {
+            SipRegistrationListener listener) throws SipException {
         try {
             ISipSession session = sSipService.createSession(
-                    localProfile, listener);
+                    localProfile, createRelay(listener));
             session.register(expiryTime);
         } catch (RemoteException e) {
             throw new SipException("register()", e);
         }
     }
+
     public static void unregister(SipProfile localProfile,
-            ISipSessionListener listener) throws SipException {
+            SipRegistrationListener listener) throws SipException {
         try {
             ISipSession session = sSipService.createSession(
-                    localProfile, listener);
+                    localProfile, createRelay(listener));
             session.unregister();
         } catch (RemoteException e) {
             throw new SipException("unregister()", e);
+        }
+    }
+
+    private static ISipSessionListener createRelay(
+            SipRegistrationListener listener) {
+        return ((listener == null) ? null : new ListenerRelay(listener));
+    }
+
+    public static ISipSession createSipSession(SipProfile localProfile,
+            ISipSessionListener listener) throws SipException {
+        try {
+            return sSipService.createSession(localProfile, listener);
+        } catch (RemoteException e) {
+            throw new SipException("createSipSession()", e);
+        }
+    }
+
+    private static class ListenerRelay extends SipSessionAdapter {
+        private SipRegistrationListener mListener;
+
+        // listener must not be null
+        public ListenerRelay(SipRegistrationListener listener) {
+            mListener = listener;
+        }
+
+        private String getUri(ISipSession session) {
+            try {
+                return session.getLocalProfile().getUriString();
+            } catch (RemoteException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public void onRegistering(ISipSession session) {
+            mListener.onRegistering(getUri(session));
+        }
+
+        @Override
+        public void onRegistrationDone(ISipSession session, int duration) {
+            long expiryTime = duration;
+            if (duration > 0) expiryTime += System.currentTimeMillis();
+            mListener.onRegistrationDone(getUri(session), expiryTime);
+        }
+
+        @Override
+        public void onRegistrationFailed(ISipSession session, String className,
+                String message) {
+            mListener.onRegistrationFailed(getUri(session), className, message);
+        }
+
+        @Override
+        public void onRegistrationTimeout(ISipSession session) {
+            mListener.onRegistrationFailed(getUri(session),
+                    SipException.class.getName(), "registration timed out");
         }
     }
 }

@@ -142,6 +142,18 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
         });
     }
 
+    public void onRegistering(final ISipSession session) {
+        proxy(new Runnable() {
+            public void run() {
+                try {
+                    mListener.onRegistering(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistering(): " + t);
+                }
+            }
+        });
+    }
+
     public void onRegistrationDone(final ISipSession session,
             final int duration) {
         proxy(new Runnable() {

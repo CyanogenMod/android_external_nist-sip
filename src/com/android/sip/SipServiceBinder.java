@@ -31,6 +31,7 @@ import android.net.sip.ISipSessionListener;
 import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipSessionAdapter;
+import android.net.sip.SipSessionState;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -71,11 +72,13 @@ public class SipServiceBinder extends Service {
 
     private final IBinder mBinder = new ISipService.Stub() {
         public void openToReceiveCalls(SipProfile localProfile,
-                String incomingCallBroadcastAction) {
+                String incomingCallBroadcastAction,
+                ISipSessionListener listener) {
             try {
                 Log.d(TAG, "openToReceiveCalls: " + localProfile + ": "
                         + incomingCallBroadcastAction);
-                createCallReceiver(localProfile, incomingCallBroadcastAction);
+                createCallReceiver(localProfile, incomingCallBroadcastAction,
+                        listener);
             } catch (SipException e) {
                 Log.e(TAG, "openToReceiveCalls()", e);
                 // TODO: how to send the exception back
@@ -139,12 +142,27 @@ public class SipServiceBinder extends Service {
         }
 
         @Override
+        public void onRegistering(ISipSession session) {
+            try {
+                SipProfile localProfile = session.getLocalProfile();
+                SipCallReceiver receiver = getReceiver(localProfile);
+                Log.d(TAG, "registering: " + localProfile.getUri());
+                if (receiver != null) receiver.onRegistering(session);
+            } catch (RemoteException e) {
+                // should not happen with a local call
+                Log.e(TAG, "onRegistering()", e);
+            }
+        }
+
+        @Override
         public void onRegistrationDone(ISipSession session, int duration) {
             try {
                 SipProfile localProfile = session.getLocalProfile();
                 SipCallReceiver receiver = getReceiver(localProfile);
                 Log.d(TAG, "registration done: " + localProfile.getUri());
-                if (receiver != null) receiver.onRegistrationDone();
+                if (receiver != null) {
+                    receiver.onRegistrationDone(session, duration);
+                }
             } catch (RemoteException e) {
                 // should not happen with a local call
                 Log.e(TAG, "onRegistrationDone()", e);
@@ -158,7 +176,9 @@ public class SipServiceBinder extends Service {
                 SipProfile localProfile = session.getLocalProfile();
                 SipCallReceiver receiver = getReceiver(localProfile);
                 Log.d(TAG, "registration failed: " + localProfile.getUri());
-                if (receiver != null) receiver.onRegistrationFailed();
+                if (receiver != null) {
+                    receiver.onRegistrationFailed(session, className, message);
+                }
             } catch (RemoteException e) {
                 // should not happen with a local call
                 Log.e(TAG, "onRegistrationFailed()", e);
@@ -171,7 +191,9 @@ public class SipServiceBinder extends Service {
                 SipProfile localProfile = session.getLocalProfile();
                 SipCallReceiver receiver = getReceiver(localProfile);
                 Log.d(TAG, "registration timed out: " + localProfile.getUri());
-                if (receiver != null) receiver.onRegistrationFailed();
+                if (receiver != null) {
+                    receiver.onRegistrationTimeout(session);
+                }
             } catch (RemoteException e) {
                 // should not happen with a local call
                 Log.e(TAG, "onRegistrationTimeout()", e);
@@ -200,20 +222,22 @@ public class SipServiceBinder extends Service {
     }
 
     private synchronized SipCallReceiver getReceiver(SipProfile localProfile) {
-        String key = localProfile.getUri().toString();
+        String key = localProfile.getUriString();
         return mSipReceivers.get(key);
     }
 
     private synchronized void createCallReceiver(SipProfile localProfile,
-            String incomingCallBroadcastAction) throws SipException {
-        String key = localProfile.getUri().toString();
+            String incomingCallBroadcastAction,
+            ISipSessionListener listener) throws SipException {
+        String key = localProfile.getUriString();
         SipCallReceiver receiver = mSipReceivers.get(key);
         if (receiver != null) {
             receiver.setIncomingCallBroadcastAction(
                     incomingCallBroadcastAction);
+            receiver.setListener(listener);
         } else {
             receiver = new SipCallReceiver(localProfile,
-                    incomingCallBroadcastAction);
+                    incomingCallBroadcastAction, listener);
             mSipReceivers.put(key, receiver);
         }
 
@@ -221,7 +245,7 @@ public class SipServiceBinder extends Service {
     }
 
     private synchronized void closeReceiver(SipProfile localProfile) {
-        String key = localProfile.getUri().toString();
+        String key = localProfile.getUriString();
         SipCallReceiver receiver = mSipReceivers.remove(key);
         if (receiver != null) receiver.close();
     }
@@ -232,11 +256,7 @@ public class SipServiceBinder extends Service {
 
     private synchronized boolean isRegistered(String localProfileUri) {
         SipCallReceiver receiver = mSipReceivers.get(localProfileUri);
-        if (receiver != null) {
-            return receiver.isRegistered();
-        } else {
-            return false;
-        }
+        return ((receiver != null) ? receiver.isRegistered() : false);
     }
 
     private synchronized void onConnectivityChanged(
@@ -289,12 +309,36 @@ public class SipServiceBinder extends Service {
     private class SipCallReceiver {
         private SipProfile mLocalProfile;
         private String mIncomingCallBroadcastAction;
+        private ISipSessionListener mListener;
         private boolean mRegistered;
+        private ISipSession mSipSession;
+        private long mExpiryTime;
 
         public SipCallReceiver(SipProfile localProfile,
-                String incomingCallBroadcastAction) {
+                String incomingCallBroadcastAction,
+                ISipSessionListener listener) {
             mLocalProfile = localProfile;
             mIncomingCallBroadcastAction = incomingCallBroadcastAction;
+            mListener = listener;
+        }
+
+        public void setListener(ISipSessionListener listener) {
+            mListener = listener;
+            if ((listener == null) || (mSipSession == null)) return;
+
+            // TODO: separate thread for callback
+            try {
+                if (SipSessionState.REGISTERING.equals(
+                        mSipSession.getState())) {
+                    mListener.onRegistering(mSipSession);
+                } else if (mRegistered) {
+                    int duration = (int)
+                            (mExpiryTime - System.currentTimeMillis());
+                    mListener.onRegistrationDone(mSipSession, duration);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "setListener(): " + t);
+            }
         }
 
         public void setIncomingCallBroadcastAction(String action) {
@@ -330,12 +374,66 @@ public class SipServiceBinder extends Service {
             return mRegistered;
         }
 
-        public void onRegistrationDone() {
-            mRegistered = true;
+        public void onRegistering(ISipSession session) {
+            mSipSession = session;
+            // TODO: separate thread for callback
+            if (mListener != null) {
+                try {
+                    mListener.onRegistering(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistering(): " + t);
+                }
+            }
         }
 
-        public void onRegistrationFailed() {
+        public void onRegistrationDone(ISipSession session, int duration) {
+            mSipSession = session;
+            if (duration < 0) {
+                mRegistered = false;
+                mExpiryTime = -1L;
+            } else {
+                mRegistered = true;
+                mExpiryTime = System.currentTimeMillis() + duration;
+            }
+            // TODO: separate thread for callback
+            if (mListener != null) {
+                try {
+                    mListener.onRegistrationDone(session, duration);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationDone(): " + t);
+                }
+            }
+        }
+
+        public void onRegistrationFailed(ISipSession session, String className,
+                String message) {
+            mSipSession = session;
             mRegistered = false;
+            // TODO: separate thread for callback
+            if (mListener != null) {
+                try {
+                    mListener.onRegistrationFailed(session, className, message);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationFailed(): " + t);
+                }
+            }
+        }
+
+        public void onRegistrationTimeout(ISipSession session) {
+            mSipSession = session;
+            mRegistered = false;
+            // TODO: separate thread for callback
+            if (mListener != null) {
+                try {
+                    mListener.onRegistrationTimeout(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationTimeout(): " + t);
+                }
+            }
+        }
+
+        private String getUri() {
+            return mLocalProfile.getUriString();
         }
     }
 

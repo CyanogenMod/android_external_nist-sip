@@ -25,7 +25,8 @@ import android.net.sip.SipProfile;
  */
 interface ISipService {
     void openToReceiveCalls(in SipProfile localProfile,
-            String incomingCallBroadcastAction);
+            String incomingCallBroadcastAction,
+            in ISipSessionListener listener);
     void close(in SipProfile localProfile);
     boolean isOpened(String localProfileUri);
     boolean isRegistered(String localProfileUri);

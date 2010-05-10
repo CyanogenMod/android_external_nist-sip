@@ -24,11 +24,10 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.sip.ISipSession;
-import android.net.sip.ISipSessionListener;
 import android.net.sip.SipProfile;
 import android.net.sip.SipAudioCall;
 import android.net.sip.SipManager;
-import android.net.sip.SipSessionAdapter;
+import android.net.sip.SipRegistrationListener;
 import android.net.sip.SipSessionState;
 import android.os.Bundle;
 import android.os.RemoteException;
@@ -164,7 +163,7 @@ public class SipMain extends PreferenceActivity
     private synchronized void openToReceiveCalls() {
         try {
             SipManager.openToReceiveCalls(createLocalProfile(),
-                    INCOMING_CALL_ACTION);
+                    INCOMING_CALL_ACTION, null);
         } catch (Exception e) {
             setCallStatus(e);
         }
@@ -335,23 +334,19 @@ public class SipMain extends PreferenceActivity
         if (mAudioCall != null) mAudioCall.close();
     }
 
-    private ISipSessionListener createRegistrationListener() {
-        return new SipSessionAdapter() {
-            @Override
-            public void onRegistrationDone(ISipSession session, int duration) {
+    private SipRegistrationListener createRegistrationListener() {
+        return new SipRegistrationListener() {
+            public void onRegistrationDone(String uri, long expiryTime) {
                 setCallStatus();
             }
 
-            @Override
-            public void onRegistrationFailed(ISipSession session,
-                    String className, String message) {
+            public void onRegistrationFailed(String uri, String className,
+                    String message) {
                 mError = new SipException("registration error: " + message);
                 setCallStatus();
             }
 
-            @Override
-            public void onRegistrationTimeout(ISipSession session) {
-                mError = new SipException("registration timed out");
+            public void onRegistering(String uri) {
                 setCallStatus();
             }
         };

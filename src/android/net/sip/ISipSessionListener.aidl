@@ -34,6 +34,7 @@ interface ISipSessionListener {
     void onCallChangeFailed(in ISipSession session, String errorClass,
             String errorMessage);
 
+    void onRegistering(in ISipSession session);
     void onRegistrationDone(in ISipSession session, int duration);
     void onRegistrationFailed(in ISipSession session, String errorClass,
             String errorMessage);

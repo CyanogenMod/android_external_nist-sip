@@ -20,11 +20,9 @@ package com.android.settings.sip;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.net.sip.ISipSession;
-import android.net.sip.ISipSessionListener;
 import android.net.sip.SipProfile;
 import android.net.sip.SipManager;
-import android.net.sip.SipSessionAdapter;
+import android.net.sip.SipRegistrationListener;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.preference.Preference;
@@ -183,7 +181,7 @@ public class SipSettings extends PreferenceActivity {
             Log.e(TAG, "Can not getUri of the profile" + p.getProfileName(), e);
         }
         SipPreference pref = new SipPreference(this, p);
-        mSipPreferenceMap.put(p.getProfileName(), pref);
+        mSipPreferenceMap.put(p.getUriString(), pref);
         if (addToContainer) mSipListContainer.addPreference(pref);
 
         pref.setOnPreferenceClickListener(
@@ -242,8 +240,8 @@ public class SipSettings extends PreferenceActivity {
         case CONTEXT_MENU_REGISTER_ID:
             if (p != null) {
                 try {
-                    SipManager.openToReceiveCalls(p, INCOMING_CALL_ACTION);
-                    SipManager.register(p, EXPIRY_TIME, createSessionAdapter());
+                    SipManager.openToReceiveCalls(p, INCOMING_CALL_ACTION,
+                            createRegistrationListener());
                 } catch (Exception e) {
                     Log.e(TAG, "register failed", e);
                 }
@@ -286,9 +284,14 @@ public class SipSettings extends PreferenceActivity {
 
     private void deleteProfile(SipProfile p) {
         mSipProfileList.remove(p);
-        SipPreference pref = mSipPreferenceMap.remove(p.getProfileName());
+        SipPreference pref = mSipPreferenceMap.remove(p.getUriString());
         mSipListContainer.removePreference(pref);
         deleteProfile(mProfilesDirectory + p.getProfileName());
+        try {
+            SipManager.close(p);
+        } catch (Exception e) {
+            Log.e(TAG, "unregister failed:" + e);
+        }
     }
 
     private void saveProfileToStorage(SipProfile p) throws IOException {
@@ -336,13 +339,16 @@ public class SipSettings extends PreferenceActivity {
         startActivityForResult(intent, REQUEST_ADD_OR_EDIT_SIP_PROFILE);
     }
 
-    private void setProfileSummary(final SipProfile profile,
+    private void setProfileSummary(SipProfile profile, String message) {
+        setProfileSummary(profile.getUriString(), message);
+    }
+
+    private void setProfileSummary(final String profileUri,
             final String message) {
         runOnUiThread(new Runnable() {
             public void run() {
                 try {
-                    SipPreference pref =
-                            mSipPreferenceMap.get(profile.getProfileName());
+                    SipPreference pref = mSipPreferenceMap.get(profileUri);
                     if (pref != null) {
                         pref.setSummary(message);
                     }
@@ -353,37 +359,20 @@ public class SipSettings extends PreferenceActivity {
         });
     }
 
-    private ISipSessionListener createSessionAdapter() {
-        return new SipSessionAdapter() {
-            @Override
-            public void onRegistrationDone(ISipSession session, int duration) {
-                try {
-                    setProfileSummary(session.getLocalProfile(),
-                            (duration < 0) ? UNREGISTERED : REGISTERED);
-                } catch (android.os.RemoteException e) {
-                    Log.e(TAG, "onRegistrationDone", e);
-                }
+    private SipRegistrationListener createRegistrationListener() {
+        return new SipRegistrationListener() {
+            public void onRegistrationDone(String profileUri, long expiryTime) {
+                setProfileSummary(profileUri,
+                        (expiryTime <= 0) ? UNREGISTERED : REGISTERED);
             }
 
-            @Override
-            public void onRegistrationFailed(ISipSession session,
+            public void onRegistrationFailed(String profileUri,
                     String className, String message) {
-                try {
-                    setProfileSummary(session.getLocalProfile(),
-                            "Registration error: " + message);
-                } catch (android.os.RemoteException e) {
-                    Log.e(TAG, "onRegistrationFailed", e);
-                }
+                setProfileSummary(profileUri, "Registration error: " + message);
             }
 
-            @Override
-            public void onRegistrationTimeout(ISipSession session) {
-                try {
-                    setProfileSummary(session.getLocalProfile(),
-                            "Registration timed out");
-                } catch (android.os.RemoteException e) {
-                    Log.e(TAG, "onRegistrationTimeout", e);
-                }
+            public void onRegistering(String profileUri) {
+                setProfileSummary(profileUri, "Registering...");
             }
         };
     }

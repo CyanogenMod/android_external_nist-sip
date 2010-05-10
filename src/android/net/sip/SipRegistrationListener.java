@@ -16,25 +16,9 @@
 
 package android.net.sip;
 
-/**
- * Defines {@link ISipSession} states.
- */
-public enum SipSessionState {
-    READY_TO_CALL,
-    REGISTERING,
-    DEREGISTERING,
-    INCOMING_CALL,
-    INCOMING_CALL_ANSWERING,
-    OUTGOING_CALL,
-    OUTGOING_CALL_RING_BACK,
-    OUTGOING_CALL_CANCELING,
-
-    // the states below must be after the session has been established
-    IN_CALL,
-
-    REMOTE_ERROR;
-
-    public boolean equals(String state) {
-        return toString().equals(state);
-    }
+public interface SipRegistrationListener {
+    void onRegistering(String localProfileUri);
+    void onRegistrationDone(String localProfileUri, long mExpiryTime);
+    void onRegistrationFailed(String localProfileUri, String errorClass,
+            String errorMessage);
 }

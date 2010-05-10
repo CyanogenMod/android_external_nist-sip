@@ -114,6 +114,7 @@ class SipSessionGroup implements SipListener {
         }
         mSipHelper = new SipHelper(stack, provider);
         mLocalProfile = myself;
+        Log.d(TAG, " start stack for " + myself.getUriString());
         stack.start();
     }
 
@@ -122,6 +123,7 @@ class SipSessionGroup implements SipListener {
     }
 
     public synchronized void close() {
+        Log.d(TAG, " close stack for " + mLocalProfile.getUriString());
         mSessionMap.clear();
         mAutoRegistration.stop();
         if (mSipStack != null) {
@@ -155,6 +157,7 @@ class SipSessionGroup implements SipListener {
         }
     }
 
+    // For internal use, require listener not to block in callbacks.
     public void openToReceiveCalls(ISipSessionListener listener)
             throws SipException {
         createCallReceiver(listener);
@@ -459,11 +462,7 @@ class SipSessionGroup implements SipListener {
         }
 
         private boolean processExceptions(EventObject evt) throws SipException {
-            // process INVITE and CANCEL
-            if (isRequestEvent(Request.INVITE, evt)) {
-                mSipHelper.sendResponse((RequestEvent) evt, Response.BUSY_HERE);
-                return true;
-            } else if (isRequestEvent(Request.CANCEL, evt)) {
+            if (isRequestEvent(Request.CANCEL, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt,
                         Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST);
                 return true;
@@ -586,6 +585,7 @@ class SipSessionGroup implements SipListener {
                 mDialog = mClientTransaction.getDialog();
                 addSipSession(this);
                 mState = SipSessionState.REGISTERING;
+                mProxy.onRegistering(this);
                 return true;
             } else if (DEREGISTER == evt) {
                 mClientTransaction = mSipHelper.sendRegister(mLocalProfile,
@@ -593,6 +593,7 @@ class SipSessionGroup implements SipListener {
                 mDialog = mClientTransaction.getDialog();
                 addSipSession(this);
                 mState = SipSessionState.DEREGISTERING;
+                mProxy.onRegistering(this);
                 return true;
             }
             return false;
@@ -957,7 +958,8 @@ class SipSessionGroup implements SipListener {
         public void start(ISipSessionListener listener) {
             mListener = listener;
             if (mSession == null) {
-                Log.v(TAG, "start AutoRegistrationProcess...");
+                Log.v(TAG, "start AutoRegistrationProcess for "
+                        + mLocalProfile.getUriString());
                 mBackoff = 1;
                 mSession = (SipSessionImpl) createSession(this);
                 // start unregistration to clear up old registration at server
@@ -998,6 +1000,18 @@ class SipSessionGroup implements SipListener {
                 mBackoff *= 2;
             }
             return duration;
+        }
+
+        @Override
+        public void onRegistering(ISipSession session) {
+            if (session != mSession) return;
+            if (mListener != null) {
+                try {
+                    mListener.onRegistering(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistering()", t);
+                }
+            }
         }
 
         @Override

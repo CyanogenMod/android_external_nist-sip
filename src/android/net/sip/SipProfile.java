@@ -179,6 +179,10 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
         return (SipURI) mAddress.getURI();
     }
 
+    public String getUriString() {
+        return mAddress.getURI().toString();
+    }
+
     public Address getSipAddress() {
         return mAddress;
     }
