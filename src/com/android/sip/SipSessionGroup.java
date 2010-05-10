@@ -603,7 +603,8 @@ class SipSessionGroup implements SipListener {
             if (evt instanceof MakeCallCommand) {
                 // answer call
                 String tag = mInCall ? mDialog.getLocalTag() : generateTag();
-                mSipHelper.sendInviteOk(mInviteReceived, mLocalProfile,
+                mServerTransaction = mSipHelper.sendInviteOk(mInviteReceived,
+                        mLocalProfile,
                         ((MakeCallCommand) evt).getSessionDescription(), tag,
                         mServerTransaction);
                 mState = SipSessionState.INCOMING_CALL_ANSWERING;
@@ -771,9 +772,10 @@ class SipSessionGroup implements SipListener {
                 return true;
             } else if (isRequestEvent(Request.INVITE, evt)) {
                 // got Re-INVITE
-                RequestEvent event = (RequestEvent) evt;
+                RequestEvent event = mInviteReceived = (RequestEvent) evt;
                 mState = SipSessionState.INCOMING_CALL;
                 mPeerSessionDescription = event.getRequest().getRawContent();
+                mServerTransaction = null;
                 mProxy.onRinging(this, mPeerProfile, mPeerSessionDescription);
                 return true;
             } else if (isRequestEvent(Request.BYE, evt)) {

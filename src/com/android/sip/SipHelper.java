@@ -304,9 +304,10 @@ class SipHelper {
     /**
      * @param event the INVITE request event
      */
-    public void sendInviteOk(RequestEvent event, SipProfile localProfile,
-            SessionDescription sessionDescription, String tag,
-            ServerTransaction inviteTransaction) throws SipException {
+    public ServerTransaction sendInviteOk(RequestEvent event,
+            SipProfile localProfile, SessionDescription sessionDescription,
+            String tag, ServerTransaction inviteTransaction)
+            throws SipException {
         try {
             Request request = event.getRequest();
             Response response = mMessageFactory.createResponse(Response.OK,
@@ -320,9 +321,13 @@ class SipHelper {
                     mHeaderFactory.createContentTypeHeader(
                             "application", sessionDescription.getType()));
 
+            if (inviteTransaction == null) {
+                inviteTransaction = getServerTransaction(event);
+            }
             if (inviteTransaction.getState() != TransactionState.COMPLETED) {
                 inviteTransaction.sendResponse(response);
             }
+            return inviteTransaction;
         } catch (ParseException e) {
             throw new SipException("sendInviteOk()", e);
         }
