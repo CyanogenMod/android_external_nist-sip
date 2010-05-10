@@ -87,11 +87,11 @@ public class SipServiceBinder extends Service {
         }
 
         public boolean isOpened(String localProfileUri) {
-            return isOpened(localProfileUri);
+            return SipServiceBinder.this.isOpened(localProfileUri);
         }
 
         public boolean isRegistered(String localProfileUri) {
-            return isRegistered(localProfileUri);
+            return SipServiceBinder.this.isRegistered(localProfileUri);
         }
 
         public ISipSession createSession(SipProfile localProfile,
