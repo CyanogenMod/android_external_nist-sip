@@ -386,6 +386,7 @@ public class SipMain extends PreferenceActivity
         try {
             mAudioCall.endCall();
             mSpeakerMode = false;
+            mAudioCall = null;
         } catch (SipException e) {
             Log.e(TAG, "endCall()", e);
             setCallStatus(e);

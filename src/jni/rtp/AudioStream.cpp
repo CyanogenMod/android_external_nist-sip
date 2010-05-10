@@ -47,6 +47,59 @@ using namespace android;
 
 static int gRandom = -1;
 
+class JitterBuffer {
+    static const int SIZE = 6;
+    uint32_t mBufferSize;
+    uint8_t *mBuffer[SIZE];
+    uint16_t *mLength;
+    uint16_t mHead;
+    uint16_t mTail;
+
+    public:
+        JitterBuffer(int sampleCount) {
+            mHead = mTail = 0;
+            mBufferSize = 2048 + (sizeof(int16_t) * sampleCount);
+            for (int i = 0; i < SIZE ; ++i) {
+                mBuffer[i] = (uint8_t*) malloc(mBufferSize);
+            }
+            mLength = (uint16_t*) malloc(SIZE * sizeof(uint16_t));
+        }
+
+        ~JitterBuffer() {
+            for (int i = 0; i < SIZE ; ++i) {
+                free(mBuffer[i]);
+            }
+            free(mLength);
+        }
+
+        int getBufferSize() {
+            return mBufferSize;
+        }
+
+        uint8_t* obtainBuffer() {
+            // we need extra buffer to save one memcpy.
+            int reservedHead = ((mHead == 0) ? (SIZE - 1) : (mHead - 1));
+            if (mTail == reservedHead) return NULL;
+            return mBuffer[mTail];
+        }
+
+        void pushBack(int length) {
+            mLength[mTail] = length;
+            if (++mTail == SIZE) mTail = 0;
+        }
+
+        unsigned int popFront(uint8_t **packet) {
+            int length = mLength[mHead];
+            *packet = mBuffer[mHead];
+            if (++mHead == SIZE) mHead = 0;
+            return length;
+        }
+
+        bool empty() {
+            return (mHead == mTail);
+        }
+};
+
 class AudioStream
 {
 public:
@@ -81,12 +134,16 @@ private:
     int mInterval;
     int mTimer;
 
+    JitterBuffer *mJitterBuffer;
+
     volatile int32_t mNextDtmfEvent;
     int mDtmfEvent;
     int mDtmfDuration;
 
     bool encode();
     bool decode();
+
+    int getPacketFromJB(RtpSocket *rtpSocket, uint8_t **buffer, timeval *deadline);
 
     class Sender : public Thread
     {
@@ -128,6 +185,7 @@ AudioStream::AudioStream()
     mSender = new Sender(this);
     mReceiver = new Receiver(this);
     mCodec = NULL;
+    mJitterBuffer = NULL;
 }
 
 AudioStream::~AudioStream()
@@ -137,6 +195,7 @@ AudioStream::~AudioStream()
     mSender.clear();
     mReceiver.clear();
     delete mCodec;
+    delete mJitterBuffer;
 }
 
 bool AudioStream::set(RtpSocket *rtpSocket, const char *codecName,
@@ -187,6 +246,10 @@ bool AudioStream::set(RtpSocket *rtpSocket, const char *codecName,
 
     mSampleRate = sampleRate;
     mSampleCount = sampleCount;
+
+    if (mJitterBuffer == NULL) {
+        mJitterBuffer = new JitterBuffer(sampleCount);
+    }
 
     // mInterval is a threshold for jitter control in microseconds. To avoid
     // introducing more latencies, here we use 0.8 times of the real interval.
@@ -295,7 +358,7 @@ bool AudioStream::encode()
     }
 
     // Otherwise encode the samples and prepare the packet.
-    __attribute__((aligned(4)) uint8_t packet[12 + sizeof(samples)];
+    __attribute__((aligned(4))) uint8_t packet[12 + sizeof(samples)];
 
     uint32_t *header = (uint32_t *)packet;
     header[0] = htonl(mCodecMagic | mLocalSequence);
@@ -348,10 +411,10 @@ bool AudioStream::decode()
     }
 
     int16_t samples[mSampleCount];
-    __attribute__((aligned(4)) uint8_t packet[2048 + sizeof(samples)];
+    uint8_t *packet;
 
     while (1) {
-        int length = receive(mSocket, packet, sizeof(packet), &deadline);
+        int length = getPacketFromJB(mSocket, &packet, &deadline);
         if (length <= 0) {
             return true;
         }
@@ -391,29 +454,45 @@ bool AudioStream::decode()
             continue;
         }
 
-
-        // Here we implement a simple jitter control for the incoming packets.
-        // Ideally there should be only one packet every time we try to read
-        // from the socket. If any packets are late, we must drop some of them
-        // or the delay will get longer and longer. In this implementation we
-        // simply drain the socket after we get a valid packet. We are also
-        // looking for better alternatives such as removing silence, but let us
-        // start simple. :)
-        for (int i = 0; i < 100; ++i) {
-            if (receive(mSocket, NULL, 0, NULL) <= 0) {
-                if (i > 0) {
-                    LOGD("drop %d packets", i);
-                }
-                break;
-            }
-        }
-
         // Write samples to AudioTrack. Again, since AudioTrack itself has fault
         // recovery mechanism, we just return false if the length is wrong.
         return mTrack.write(samples, length) == length;
     }
 }
 
+int AudioStream::getPacketFromJB(RtpSocket *rtpSocket, uint8_t **buffer,
+    timeval *deadline)
+{
+    // Here we implement a simple jitter control for the incoming packets.
+    // Ideally there should be only one packet every time we try to read
+    // from the socket. If any packets are late, we must drop incoming packets
+    // if the jitter buffer is full already.
+
+    int result, count = 0;
+    if (mJitterBuffer->empty()) {
+        *buffer = mJitterBuffer->obtainBuffer();
+        result = receive(rtpSocket, *buffer, mJitterBuffer->getBufferSize(),
+                         deadline);
+        if (result <= 0) return result;
+        mJitterBuffer->pushBack(result);
+    }
+    result = mJitterBuffer->popFront(buffer);
+    while (1) {
+        void *fillBuffer = (void*) mJitterBuffer->obtainBuffer();
+        int length = receive(mSocket, fillBuffer, ((fillBuffer == NULL) ?
+                             0 : mJitterBuffer->getBufferSize()), NULL);
+        if (length <= 0) break;
+        if (fillBuffer != NULL) {
+            mJitterBuffer->pushBack(length);
+        } else {
+            count++;
+        }
+    }
+    if (count > 0) {
+        LOGD("Drop %d packet(s), jitter buffer is full!", count);
+    }
+    return result;
+}
 // -----------------------------------------------------------------------------
 
 static jfieldID gNative;

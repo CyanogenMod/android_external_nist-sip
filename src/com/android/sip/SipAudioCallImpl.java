@@ -75,6 +75,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private boolean mChangingSession = false;
     private boolean mInCall = false;
     private boolean mMuted = false;
+    private boolean mHold = false;
 
     private boolean mRingbackToneEnabled = true;
     private boolean mRingtoneEnabled = true;
@@ -114,8 +115,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     public synchronized boolean isOnHold() {
-        if (mPeerSd == null) return false;
-        return (mPeerSd.isSendOnly(AUDIO) || mPeerSd.isReceiveOnly(AUDIO));
+        return mHold;
     }
 
     public synchronized void close() {
@@ -124,6 +124,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
         stopRinging();
         mSipSession = null;
         mInCall = false;
+        mHold = false;
         mChangingSession = false;
         mSessionId = -1L;
     }
@@ -301,6 +302,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
         try {
             if (mChangingSession) return;
             mChangingSession = true;
+            mHold = true;
             mSipSession.changeCall(createHoldSessionDescription());
         } catch (Throwable e) {
             throwSipException(e);
@@ -321,6 +323,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
         try {
             if (mChangingSession) return;
             mChangingSession = true;
+            mHold = false;
             mSipSession.changeCall(createContinueSessionDescription());
         } catch (Throwable e) {
             throwSipException(e);
@@ -477,7 +480,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     private void startCall(SdpSessionDescription peerSd) {
-        stopCall(DONT_RELEASE_SOCKET);
+        if (!mInCall) stopCall(DONT_RELEASE_SOCKET);
 
         mPeerSd = peerSd;
         String peerMediaAddress = peerSd.getPeerMediaAddress(AUDIO);
@@ -490,20 +493,30 @@ public class SipAudioCallImpl extends SipSessionAdapter
         int frameSize = sampleRate / 50; // 160
         try {
             // TODO: get sample rate from sdp
-            try {
-                mMediaSocket.associate(InetAddress.getByName(peerMediaAddress),
-                        peerMediaPort);
-            } catch (java.net.SocketException e) {
-                // TODO: allow to re-associate in RtpSocket
-                Log.w(TAG, "RtpSocket.associate():" + e);
+            if (!mInCall) {
+                try {
+                    mMediaSocket.associate(InetAddress.getByName(peerMediaAddress),
+                            peerMediaPort);
+                } catch (java.net.SocketException e) {
+                    // TODO: allow to re-associate in RtpSocket
+                    Log.w(TAG, "RtpSocket.associate():" + e);
+                }
+                mCodec = getCodec(peerSd);
+                mRtpSession = new AudioStream(mMediaSocket);
+                mRtpSession.setCodec(convert(mCodec), mCodec.payloadType);
+                mRtpSession.setDtmf(DTMF);
+                mRtpSession.prepare();
+                if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
+                if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
+            } else {
+                if (mHold) {
+                    mRtpSession.stopSending();
+                    mRtpSession.stopReceiving();
+                } else {
+                    if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
+                    if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
+                }
             }
-            mCodec = getCodec(peerSd);
-            mRtpSession = new AudioStream(mMediaSocket);
-            mRtpSession.setCodec(convert(mCodec), mCodec.payloadType);
-            mRtpSession.setDtmf(DTMF);
-            mRtpSession.prepare();
-            if (!peerSd.isReceiveOnly(AUDIO)) mRtpSession.startReceiving();
-            if (!peerSd.isSendOnly(AUDIO)) mRtpSession.startSending();
             setInCallMode();
         } catch (Exception e) {
             Log.e(TAG, "call()", e);

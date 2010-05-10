@@ -260,8 +260,6 @@ class SipHelper {
     public ClientTransaction sendReinvite(Dialog dialog,
             SessionDescription sessionDescription) throws SipException {
         try {
-            // SipStack increases seq number automatically
-            // so no need to call dialog.incrementLocalSequenceNumber().
             Request request = dialog.createRequest(Request.INVITE);
             request.setContent(sessionDescription.getContent(),
                     mHeaderFactory.createContentTypeHeader(
@@ -357,8 +355,6 @@ class SipHelper {
     }
 
     public void sendBye(Dialog dialog) throws SipException {
-        // SipStack increases seq number automatically
-        // so no need to call dialog.incrementLocalSequenceNumber().
         Request byeRequest = dialog.createRequest(Request.BYE);
         Log.d(TAG, "send BYE: " + byeRequest);
         dialog.sendRequest(mSipProvider.getNewClientTransaction(byeRequest));
@@ -366,8 +362,6 @@ class SipHelper {
 
     public void sendCancel(ClientTransaction inviteTransaction)
             throws SipException {
-        // The cancel request must use the same CSeq as the request to cancel
-        // so no need to call dialog.incrementLocalSequenceNumber().
         Request cancelRequest = inviteTransaction.createCancel();
         mSipProvider.getNewClientTransaction(cancelRequest).sendRequest();
     }
