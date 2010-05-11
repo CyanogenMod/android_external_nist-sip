@@ -50,6 +50,19 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name="com.android.settings.sip.BootCompletedReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <service android:name="com.android.settings.sip.SipAutoRegistration" android:process=":remote">
+            <intent-filter>
+                <action android:name="android.net.sip.AUTO_REGISTRATOIN" />
+            </intent-filter>
+        </service>
+
         <service android:name="com.android.sip.SipServiceBinder" android:process=":remote">
             <intent-filter>
                 <!-- These are the interfaces supported by the service, which

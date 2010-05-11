@@ -17,6 +17,7 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Sip Account Settings</string>
     <string name="sip_settings_activity_title">Sip Settings Activity</string>
+    <string name="auto_registration">Auto Registration</string>
     <string name="add_sip_account">Add SIP account</string>
     <string name="sip_account_list">SIP accounts</string>
 

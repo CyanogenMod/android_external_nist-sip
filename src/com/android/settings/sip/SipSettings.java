@@ -20,11 +20,13 @@ package com.android.settings.sip;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.sip.SipProfile;
 import android.net.sip.SipManager;
 import android.net.sip.SipRegistrationListener;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.preference.CheckBoxPreference;
 import android.preference.Preference;
 import android.preference.Preference.OnPreferenceClickListener;
 import android.preference.PreferenceActivity;
@@ -50,19 +52,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * The PreferenceActivity class for managing sip profile preferences.
+ */
 public class SipSettings extends PreferenceActivity {
     static final String KEY_SIP_PROFILE = "sip_profile";
+    static final String PROFILE_OBJ_FILE = ".pobj";
+    static final String PROFILES_DIR = "/profiles/";
 
+    private static final String PREF_AUTO_REG = "auto_registration";
     private static final String PREF_ADD_SIP = "add_sip_account";
     private static final String PREF_SIP_LIST = "sip_account_list";
-    private static final String PROFILE_OBJ_FILE = ".pobj";
-    private static final String PROFILES_DIR = "/profiles/";
     private static final String TAG = "SipSettings";
     private static final String REGISTERED = "REGISTERED";
     private static final String UNREGISTERED = "NOT REGISTERED";
 
-    private static final String INCOMING_CALL_ACTION =
+    public static final String INCOMING_CALL_ACTION =
             "com.android.sip.demo.SipMain";
 
     private static final int REQUEST_ADD_OR_EDIT_SIP_PROFILE = 1;
@@ -80,6 +85,7 @@ public class SipSettings extends PreferenceActivity {
     private PreferenceCategory mSipListContainer;
     private Map<String, SipPreference> mSipPreferenceMap;
     private List<SipProfile> mSipProfileList;
+    private SharedPreferences.Editor   mSettingsEditor;
 
     private class SipPreference extends Preference {
         SipProfile mProfile;
@@ -120,6 +126,24 @@ public class SipSettings extends PreferenceActivity {
         // for long-press gesture on a profile preference
         registerForContextMenu(getListView());
 
+
+        mSettingsEditor = getSharedPreferences(
+                SipAutoRegistration.SIP_SHARED_PREFERENCES,
+                Context.MODE_WORLD_READABLE).edit();
+        ((CheckBoxPreference) findPreference(PREF_AUTO_REG))
+                .setOnPreferenceClickListener(
+                new OnPreferenceClickListener() {
+                    public boolean onPreferenceClick(Preference preference) {
+                        boolean enabled =
+                                ((CheckBoxPreference) preference).isChecked();
+                        Log.d(TAG, "checkbox pref " + enabled);
+                        mSettingsEditor.putBoolean(
+                                SipAutoRegistration.AUTOREG_FLAG, enabled);
+                        mSettingsEditor.commit();
+                        return true;
+                    }
+                });
+
         new Thread(new Runnable() {
             public void run() {
                 try {
@@ -132,30 +156,29 @@ public class SipSettings extends PreferenceActivity {
         }).start();
     }
 
-    private void retrieveSipListFromStorage() {
-
-        mSipPreferenceMap = new LinkedHashMap<String, SipPreference>();
-        mSipProfileList = Collections.synchronizedList(
+    static List<SipProfile> retrieveSipListFromDirectory(
+            String directory) {
+        List<SipProfile> sipProfileList = Collections.synchronizedList(
                 new ArrayList<SipProfile>());
-        mSipListContainer.removeAll();
 
-        File root = new File(mProfilesDirectory);
+        File root = new File(directory);
         String[] dirs = root.list();
-        if (dirs == null) return;
+        if (dirs == null) return null;
         for (String dir : dirs) {
-            File f = new File(new File(root, dir), PROFILE_OBJ_FILE);
+            File f = new File(
+                    new File(root, dir), SipSettings.PROFILE_OBJ_FILE);
             if (!f.exists()) continue;
             try {
-                SipProfile p = deserialize(f);
+                SipProfile p = SipSettings.deserialize(f);
                 if (p == null) continue;
                 if (!dir.equals(p.getProfileName())) continue;
 
-                mSipProfileList.add(p);
+                sipProfileList.add(p);
             } catch (IOException e) {
-                Log.e(TAG, "retrieveVpnListFromStorage()", e);
+                Log.e(TAG, "retrieveProfileListFromStorage()", e);
             }
         }
-        Collections.sort(mSipProfileList, new Comparator<SipProfile>() {
+        Collections.sort(sipProfileList, new Comparator<SipProfile>() {
             public int compare(SipProfile p1, SipProfile p2) {
                 return p1.getProfileName().compareTo(p2.getProfileName());
             }
@@ -165,6 +188,15 @@ public class SipSettings extends PreferenceActivity {
                 return false;
             }
         });
+        return sipProfileList;
+    }
+
+    private void retrieveSipListFromStorage() {
+
+        mSipPreferenceMap = new LinkedHashMap<String, SipPreference>();
+        mSipProfileList = retrieveSipListFromDirectory(mProfilesDirectory);
+        mSipListContainer.removeAll();
+
         for (SipProfile p : mSipProfileList) {
             Preference pref = addPreferenceFor(p, true);
         }
@@ -319,7 +351,7 @@ public class SipSettings extends PreferenceActivity {
         Log.v(TAG, "New Profile Name is " + profile.getProfileName());
     }
 
-    private SipProfile deserialize(File profileObjectFile) throws IOException {
+    static SipProfile deserialize(File profileObjectFile) throws IOException {
         try {
             ObjectInputStream ois = new ObjectInputStream(new FileInputStream(
                     profileObjectFile));

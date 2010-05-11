@@ -17,6 +17,10 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
         android:title="@string/sip_settings_activity_title">
 
+    <CheckBoxPreference android:key="auto_registration"
+        android:title="@string/auto_registration">
+    </CheckBoxPreference>
+
     <PreferenceScreen android:key="add_sip_account"
         android:title="@string/add_sip_account">
     </PreferenceScreen>
