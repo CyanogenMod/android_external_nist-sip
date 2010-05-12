@@ -67,8 +67,6 @@ import javax.sip.message.Response;
 class SipSessionGroup implements SipListener {
     private static final String TAG = "SipSession";
     private static final int EXPIRY_TIME = 3600;
-    private static final int SHORT_EXPIRY_TIME = 10;
-    private static final int MIN_EXPIRY_TIME = 60;
 
     private static final EventObject DEREGISTER = new EventObject("Deregister");
     private static final EventObject END_CALL = new EventObject("End call");
@@ -83,9 +81,6 @@ class SipSessionGroup implements SipListener {
     // session that processes INVITE requests
     private SipSessionImpl mCallReceiverSession;
     private String mLocalIp;
-
-    private AutoRegistrationProcess mAutoRegistration =
-            new AutoRegistrationProcess();
 
     // call-id-to-SipSession map
     private Map<String, SipSessionImpl> mSessionMap =
@@ -118,6 +113,14 @@ class SipSessionGroup implements SipListener {
         stack.start();
     }
 
+    public SipProfile getLocalProfile() {
+        return mLocalProfile;
+    }
+
+    public String getLocalProfileUri() {
+        return mLocalProfile.getUriString();
+    }
+
     private String getStackName() {
         return "stack" + System.currentTimeMillis();
     }
@@ -125,7 +128,7 @@ class SipSessionGroup implements SipListener {
     public synchronized void close() {
         Log.d(TAG, " close stack for " + mLocalProfile.getUriString());
         mSessionMap.clear();
-        mAutoRegistration.stop();
+        closeToNotReceiveCalls();
         if (mSipStack != null) {
             mSipStack.stop();
             mSipStack = null;
@@ -137,19 +140,8 @@ class SipSessionGroup implements SipListener {
         return (mSipStack == null);
     }
 
-    public void onNetworkDisconnected() {
-        Collection<SipSessionImpl> sessionCollection;
-        synchronized (this) {
-            sessionCollection = mSessionMap.values();
-            close();
-        }
-
-        for (SipSessionImpl session : sessionCollection) {
-            session.onNetworkDisconnected();
-        }
-    }
-
-    private synchronized void createCallReceiver(ISipSessionListener listener) {
+    // For internal use, require listener not to block in callbacks.
+    public synchronized void openToReceiveCalls(ISipSessionListener listener) {
         if (mCallReceiverSession == null) {
             mCallReceiverSession = new SipSessionCallReceiverImpl(listener);
         } else {
@@ -157,15 +149,12 @@ class SipSessionGroup implements SipListener {
         }
     }
 
-    // For internal use, require listener not to block in callbacks.
-    public void openToReceiveCalls(ISipSessionListener listener)
-            throws SipException {
-        createCallReceiver(listener);
-        mAutoRegistration.start(listener);
+    public synchronized void closeToNotReceiveCalls() {
+        mCallReceiverSession = null;
     }
 
     public ISipSession createSession(ISipSessionListener listener) {
-        return new SipSessionImpl(listener);
+        return (isClosed() ? null : new SipSessionImpl(listener));
     }
 
     private static int allocateLocalPort() throws SipException {
@@ -293,7 +282,7 @@ class SipSessionGroup implements SipListener {
         }
     }
 
-    private class SipSessionImpl extends ISipSession.Stub {
+    class SipSessionImpl extends ISipSession.Stub {
         SipProfile mPeerProfile;
         SipSessionListenerProxy mProxy = new SipSessionListenerProxy();
         SipSessionState mState = SipSessionState.READY_TO_CALL;
@@ -322,10 +311,6 @@ class SipSessionGroup implements SipListener {
 
         public boolean isInCall() {
             return mInCall;
-        }
-
-        public void onNetworkDisconnected() {
-            onError(new SipException("Network disconnected"));
         }
 
         public String getLocalIp() {
@@ -944,125 +929,4 @@ class SipSessionGroup implements SipListener {
         }
     }
 
-    private class AutoRegistrationProcess extends SipSessionAdapter
-            implements Runnable {
-        private SipSessionImpl mSession;
-        private ISipSessionListener mListener;
-        private WakeupTimer mTimer;
-        private int mBackoff = 1;
-
-        private String getAction() {
-            return toString();
-        }
-
-        public void start(ISipSessionListener listener) {
-            mListener = listener;
-            if (mSession == null) {
-                Log.v(TAG, "start AutoRegistrationProcess for "
-                        + mLocalProfile.getUriString());
-                mBackoff = 1;
-                mSession = (SipSessionImpl) createSession(this);
-                // start unregistration to clear up old registration at server
-                // TODO: when rfc5626 is deployed, use reg-id and sip.instance
-                // in registration to avoid adding duplicate entries to server
-                mSession.unregister();
-            }
-        }
-
-        public synchronized void stop() {
-            if (mTimer != null) {
-                mTimer.stop();
-                mTimer = null;
-            }
-            mSession = null;
-        }
-
-        public void run() {
-            Log.d(TAG, "  ~~~ registering");
-            if (!isClosed()) mSession.register(EXPIRY_TIME);
-        }
-
-        private synchronized void scheduleNextRegistration(int duration) {
-            if (mTimer == null) {
-                mTimer = WakeupTimer.Factory.getInstance()
-                        .createTimer();
-            }
-            Log.d(TAG, "Refresh registration " + duration + "s later.");
-            mTimer.cancel(this);
-            mTimer.set(duration * 1000L, this);
-        }
-
-        private int backoffDuration() {
-            int duration = SHORT_EXPIRY_TIME * mBackoff;
-            if (duration > 3600) {
-                duration = 3600;
-            } else {
-                mBackoff *= 2;
-            }
-            return duration;
-        }
-
-        @Override
-        public void onRegistering(ISipSession session) {
-            if (session != mSession) return;
-            if (mListener != null) {
-                try {
-                    mListener.onRegistering(session);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistering()", t);
-                }
-            }
-        }
-
-        @Override
-        public void onRegistrationDone(ISipSession session, int duration) {
-            if (session != mSession) return;
-            if (mListener != null) {
-                try {
-                    mListener.onRegistrationDone(session, duration);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationDone()", t);
-                }
-            }
-
-            if (duration > 0) {
-                // allow some overlap to avoid missing calls during renew
-                duration -= MIN_EXPIRY_TIME;
-                if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
-            }
-            if (duration <= 0) {
-                Log.d(TAG, "Refresh registration immediately");
-                run();
-            } else {
-                scheduleNextRegistration(duration);
-            }
-        }
-
-        @Override
-        public void onRegistrationFailed(ISipSession session, String className,
-                String message) {
-            if (session != mSession) return;
-            if (mListener != null) {
-                try {
-                    mListener.onRegistrationFailed(session, className, message);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationFailed(): " + t);
-                }
-            }
-            scheduleNextRegistration(backoffDuration());
-        }
-
-        @Override
-        public void onRegistrationTimeout(ISipSession session) {
-            if (session != mSession) return;
-            if (mListener != null) {
-                try {
-                    mListener.onRegistrationTimeout(session);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationTimeout(): " + t);
-                }
-            }
-            scheduleNextRegistration(backoffDuration());
-        }
-    }
 }

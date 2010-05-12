@@ -97,9 +97,9 @@ public class SipManager {
         }
     }
 
-    public static void close(SipProfile localProfile) throws SipException {
+    public static void close(String localProfileUri) throws SipException {
         try {
-            sSipService.close(localProfile);
+            sSipService.close(localProfileUri);
         } catch (RemoteException e) {
             throw new SipException("close()", e);
         }

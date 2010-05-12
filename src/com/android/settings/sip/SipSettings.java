@@ -282,7 +282,7 @@ public class SipSettings extends PreferenceActivity {
         case CONTEXT_MENU_UNREGISTER_ID:
             if (p != null) {
                 try {
-                    SipManager.close(p);
+                    SipManager.close(p.getUriString());
                     setProfileSummary(p, UNREGISTERED);
                 } catch (Exception e) {
                     Log.e(TAG, "unregister failed:" + e);
@@ -320,7 +320,7 @@ public class SipSettings extends PreferenceActivity {
         mSipListContainer.removePreference(pref);
         deleteProfile(mProfilesDirectory + p.getProfileName());
         try {
-            SipManager.close(p);
+            SipManager.close(p.getUriString());
         } catch (Exception e) {
             Log.e(TAG, "unregister failed:" + e);
         }
