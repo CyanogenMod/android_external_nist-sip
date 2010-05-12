@@ -119,6 +119,8 @@ public class SipMain extends PreferenceActivity
                 });
         setCallStatus();
 
+        final Intent intent = getIntent();
+        setIntent(null);
         new Thread(new Runnable() {
             public void run() {
                 final String localIp = getLocalIp();
@@ -129,8 +131,7 @@ public class SipMain extends PreferenceActivity
                 });
 
                 SipManager.initialize(SipMain.this);
-                openToReceiveCalls();
-                receiveCall();
+                receiveCall(intent, "thread");
             }
         }).start();
 
@@ -145,33 +146,22 @@ public class SipMain extends PreferenceActivity
 
     @Override
     protected void onResume() {
-        Log.v(TAG, " onResume()");
         super.onResume();
-        receiveCall();
+        receiveCall(getIntent(), "onResume()");
     }
 
-    private synchronized void receiveCall() {
-        // TODO: resolve offerSd to differnt apps
-        Intent intent = getIntent();
-        Log.v(TAG, "receiveCall(): any call comes in? " + intent);
+    private synchronized void receiveCall(Intent intent, String msg) {
+        Log.v(TAG, msg + ": receiveCall(): any call comes in? " + intent);
         if (SipManager.isIncomingCallIntent(intent)) {
             createSipAudioCall(intent);
             setIntent(null);
         }
     }
 
-    private synchronized void openToReceiveCalls() {
-        try {
-            SipManager.openToReceiveCalls(createLocalProfile(),
-                    INCOMING_CALL_ACTION, null);
-        } catch (Exception e) {
-            setCallStatus(e);
-        }
-    }
-
     private void createSipAudioCall(Intent intent) {
         // TODO: what happens if another call is going
         try {
+            Log.v(TAG, "create SipAudioCall");
             mAudioCall = SipManager.takeAudioCall(this, intent,
                     createListener());
             if (mAudioCall == null) {
@@ -704,9 +694,7 @@ public class SipMain extends PreferenceActivity
     private class IncomingCallReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Log.v(TAG, "onReceive(): incoming call: " + intent);
-            setIntent(intent);
-            receiveCall();
+            receiveCall(intent, "onReceive()");
         }
     }
 }

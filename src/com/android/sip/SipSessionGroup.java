@@ -89,6 +89,9 @@ class SipSessionGroup implements SipListener {
     public SipSessionGroup(String localIp, SipProfile myself)
             throws SipException {
         mLocalIp = localIp;
+        mLocalProfile = myself;
+        if (localIp == null) return;
+
         SipFactory sipFactory = SipFactory.getInstance();
         Properties properties = new Properties();
         properties.setProperty("javax.sip.STACK_NAME", getStackName());
@@ -108,7 +111,6 @@ class SipSessionGroup implements SipListener {
             throw new SipException("SipSessionGroup constructor", e);
         }
         mSipHelper = new SipHelper(stack, provider);
-        mLocalProfile = myself;
         Log.d(TAG, " start stack for " + myself.getUriString());
         stack.start();
     }

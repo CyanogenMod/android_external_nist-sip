@@ -65,6 +65,7 @@ public class SipAutoRegistration extends Service {
                         Log.e(TAG, "failed" + profile.getProfileName(), e);
                     }
                 }
+                stopSelf();
             }}
         ).start();
     }

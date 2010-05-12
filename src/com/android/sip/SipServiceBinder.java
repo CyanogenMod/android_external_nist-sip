@@ -22,12 +22,15 @@ import android.os.IBinder;
 
 // Remove this class once we move the code to framework.
 public class SipServiceBinder extends Service {
+    private static final String START_AUTO = "android.net.sip.START_AUTO";
+
     private SipServiceImpl mService;
 
     @Override
     public void onCreate() {
         super.onCreate();
         mService = new SipServiceImpl(this);
+        sendBroadcast(new Intent(START_AUTO));
     }
 
     @Override

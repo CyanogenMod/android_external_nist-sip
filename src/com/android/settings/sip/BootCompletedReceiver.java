@@ -29,11 +29,14 @@ import android.util.Log;
  */
 public class BootCompletedReceiver extends BroadcastReceiver {
     private static final String TAG = "BootCompletedReceiver";
+    private static final String START_AUTO = "android.net.sip.START_AUTO";
 
     public void onReceive(Context context, Intent intent) {
         // TODO: once we move sip service to framework, it could depend on the
         // sip service to bring up this.
-        if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+        String action = intent.getAction();
+        if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
+                && !START_AUTO.equals(action)) {
             Log.e(TAG, "should not be here " + intent.getAction());
             return;
         }

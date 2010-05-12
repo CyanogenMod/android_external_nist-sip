@@ -91,12 +91,12 @@ class SipServiceImpl extends ISipService.Stub {
     public synchronized void openToReceiveCalls(SipProfile localProfile,
             String incomingCallBroadcastAction,
             ISipSessionListener listener) {
-        Log.d(TAG, "openToReceiveCalls: " + localProfile + ": "
-                + incomingCallBroadcastAction);
+        Log.d(TAG, "openToReceiveCalls: " + localProfile.getUriString() + ": "
+                + incomingCallBroadcastAction + ": " + listener);
         try {
             SipSessionGroupExt group = createGroup(localProfile,
                     incomingCallBroadcastAction, listener);
-            if (mConnected) group.openToReceiveCalls();
+            group.openToReceiveCalls();
         } catch (SipException e) {
             Log.e(TAG, "openToReceiveCalls()", e);
             // TODO: how to send the exception back
@@ -181,14 +181,16 @@ class SipServiceImpl extends ISipService.Stub {
                 + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
 
         try {
-            if (mConnected) {
+            boolean wasConnected = mConnected;
+            mNetworkType = type;
+            mConnected = connected;
+
+            if (wasConnected) {
                 for (SipSessionGroupExt group : mSipGroups.values()) {
                     group.onConnectivityChanged(false);
                 }
             }
 
-            mNetworkType = type;
-            mConnected = connected;
             if (connected) {
                 determineLocalIp();
                 for (SipSessionGroupExt group : mSipGroups.values()) {
@@ -235,8 +237,10 @@ class SipServiceImpl extends ISipService.Stub {
 
         public synchronized void openToReceiveCalls() throws SipException {
             mOpened = true;
-            mSipGroup.openToReceiveCalls(this);
-            mAutoRegistration.start(mSipGroup);
+            if (mConnected) {
+                mSipGroup.openToReceiveCalls(this);
+                mAutoRegistration.start(mSipGroup);
+            }
             Log.v(TAG, "  openToReceiveCalls: " + getUri() + ": "
                     + mIncomingCallBroadcastAction);
         }
@@ -269,10 +273,11 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRinging(ISipSession session, SipProfile caller,
                 byte[] sessionDescription) {
-            Log.d(TAG, " ringing~~ " + getUri() + ": " + caller.getUri());
 
             // send out incoming call broadcast
             try {
+                Log.d(TAG, " ringing~~ " + getUri() + ": " + caller.getUri()
+                        + ": " + session.getCallId());
                 addPendingSession(session);
                 Intent intent = SipManager.createIncomingCallBroadcast(
                         mIncomingCallBroadcastAction, session.getCallId(),
@@ -341,6 +346,7 @@ class SipServiceImpl extends ISipService.Stub {
         }
 
         public void setListener(ISipSessionListener listener) {
+            Log.v(TAG, "setListener(): " + listener);
             mListener = listener;
             if (mSession == null) return;
 
@@ -390,6 +396,7 @@ class SipServiceImpl extends ISipService.Stub {
 
         @Override
         public void onRegistering(ISipSession session) {
+            Log.d(TAG, "onRegistering(): " + session + ": " + mSession);
             if (session != mSession) return;
             // TODO: separate thread for callback
             if (mListener != null) {
@@ -403,6 +410,7 @@ class SipServiceImpl extends ISipService.Stub {
 
         @Override
         public void onRegistrationDone(ISipSession session, int duration) {
+            Log.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
             if (session != mSession) return;
             // TODO: separate thread for callback
             if (mListener != null) {
@@ -432,6 +440,7 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRegistrationFailed(ISipSession session, String className,
                 String message) {
+            Log.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession);
             if (session != mSession) return;
             mRegistered = false;
             // TODO: separate thread for callback
@@ -447,6 +456,7 @@ class SipServiceImpl extends ISipService.Stub {
 
         @Override
         public void onRegistrationTimeout(ISipSession session) {
+            Log.d(TAG, "onRegistrationTimeout(): " + session + ": " + mSession);
             if (session != mSession) return;
             mRegistered = false;
             // TODO: separate thread for callback

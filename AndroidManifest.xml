@@ -54,6 +54,7 @@
             android:name="com.android.settings.sip.BootCompletedReceiver">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.net.sip.START_AUTO" />
             </intent-filter>
         </receiver>
 
