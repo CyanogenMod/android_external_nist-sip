@@ -51,6 +51,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.sip.SipException;
 
 /**
  * The PreferenceActivity class for managing sip profile preferences.
@@ -98,10 +99,10 @@ public class SipSettings extends PreferenceActivity {
             mProfile = p;
             setTitle(p.getProfileName());
             try {
-                setSummary(SipManager.isRegistered(p.getUri().toString())
+                setSummary(SipManager.isRegistered(p.getUriString())
                         ? REGISTERED : UNREGISTERED);
-            } catch (Exception e) {
-                Log.e(TAG, "Error:setProfileSummary:", e);
+            } catch (SipException e) {
+                Log.e(TAG, "Error!setProfileSummary:", e);
             }
         }
     }
@@ -114,6 +115,17 @@ public class SipSettings extends PreferenceActivity {
         mProfilesDirectory = getFilesDir().getAbsolutePath() + PROFILES_DIR;
         mSipListContainer = (PreferenceCategory) findPreference(PREF_SIP_LIST);
 
+        registerForAddSipListener();
+
+        // for long-press gesture on a profile preference
+        registerForContextMenu(getListView());
+
+        registerForAutoRegistrationListener();
+
+        updateProfilesStatus();
+    }
+
+    private void registerForAddSipListener() {
         PreferenceScreen mAddSip =
                 (PreferenceScreen) findPreference(PREF_ADD_SIP);
         mAddSip.setOnPreferenceClickListener(
@@ -123,10 +135,9 @@ public class SipSettings extends PreferenceActivity {
                         return true;
                     }
                 });
-        // for long-press gesture on a profile preference
-        registerForContextMenu(getListView());
+    }
 
-
+    private void registerForAutoRegistrationListener() {
         mSettingsEditor = getSharedPreferences(
                 SipAutoRegistration.SIP_SHARED_PREFERENCES,
                 Context.MODE_WORLD_READABLE).edit();
@@ -136,14 +147,16 @@ public class SipSettings extends PreferenceActivity {
                     public boolean onPreferenceClick(Preference preference) {
                         boolean enabled =
                                 ((CheckBoxPreference) preference).isChecked();
-                        Log.d(TAG, "checkbox pref " + enabled);
                         mSettingsEditor.putBoolean(
                                 SipAutoRegistration.AUTOREG_FLAG, enabled);
                         mSettingsEditor.commit();
+                        if (enabled) registerAllProfiles();
                         return true;
                     }
                 });
+    }
 
+    private void updateProfilesStatus() {
         new Thread(new Runnable() {
             public void run() {
                 try {
@@ -198,19 +211,32 @@ public class SipSettings extends PreferenceActivity {
         mSipListContainer.removeAll();
 
         for (SipProfile p : mSipProfileList) {
-            Preference pref = addPreferenceFor(p, true);
+            addPreferenceFor(p, true);
         }
     }
 
-    private SipPreference addPreferenceFor(SipProfile p, boolean addToContainer)
-            {
-        String status = UNREGISTERED;
+    private void registerAllProfiles() {
         try {
-            Log.e(TAG, "addPreferenceFor profile uri" + p.getUri());
-            status = SipManager.isRegistered(p.getUri().toString())
+            for (SipProfile p : mSipProfileList) {
+                if (!SipManager.isRegistered(p.getUriString())) {
+                    registerProfile(p);
+                }
+            }
+        } catch (SipException e) {
+            Log.e(TAG, "Error!registerAllProfiles():", e);
+        }
+    }
+
+    private void addPreferenceFor(SipProfile p, boolean addToContainer)
+            {
+        String status;
+        try {
+            Log.v(TAG, "addPreferenceFor profile uri" + p.getUri());
+            status = SipManager.isRegistered(p.getUriString())
                     ? REGISTERED : UNREGISTERED;
         } catch (Exception e) {
-            Log.e(TAG, "Can not getUri of the profile" + p.getProfileName(), e);
+            Log.e(TAG, "Cannot get status of profile" + p.getProfileName(), e);
+            return;
         }
         SipPreference pref = new SipPreference(this, p);
         mSipPreferenceMap.put(p.getUriString(), pref);
@@ -223,13 +249,11 @@ public class SipSettings extends PreferenceActivity {
                         return true;
                     }
                 });
-        return pref;
     }
 
     @Override
     public void onResume() {
         super.onResume();
-
     }
 
     @Override
@@ -270,24 +294,10 @@ public class SipSettings extends PreferenceActivity {
 
         switch(item.getItemId()) {
         case CONTEXT_MENU_REGISTER_ID:
-            if (p != null) {
-                try {
-                    SipManager.openToReceiveCalls(p, INCOMING_CALL_ACTION,
-                            createRegistrationListener());
-                } catch (Exception e) {
-                    Log.e(TAG, "register failed", e);
-                }
-            }
+            registerProfile(p);
             return true;
         case CONTEXT_MENU_UNREGISTER_ID:
-            if (p != null) {
-                try {
-                    SipManager.close(p.getUriString());
-                    setProfileSummary(p, UNREGISTERED);
-                } catch (Exception e) {
-                    Log.e(TAG, "unregister failed:" + e);
-                }
-            }
+            unRegisterProfile(p);
             return true;
 
         case CONTEXT_MENU_EDIT_ID:
@@ -300,6 +310,28 @@ public class SipSettings extends PreferenceActivity {
         }
 
         return super.onContextItemSelected(item);
+    }
+
+    private void registerProfile(SipProfile profile) {
+        if (profile != null) {
+            try {
+                SipManager.openToReceiveCalls(profile, INCOMING_CALL_ACTION,
+                        createRegistrationListener());
+            } catch (Exception e) {
+                Log.e(TAG, "register failed", e);
+            }
+        }
+    }
+
+    private void unRegisterProfile(SipProfile profile) {
+        if (profile != null) {
+            try {
+                SipManager.close(profile.getUriString());
+                setProfileSummary(profile, UNREGISTERED);
+            } catch (Exception e) {
+                Log.e(TAG, "unregister failed:" + e);
+            }
+        }
     }
 
     // TODO: Use the Util class in settings.vpn instead
@@ -319,11 +351,7 @@ public class SipSettings extends PreferenceActivity {
         SipPreference pref = mSipPreferenceMap.remove(p.getUriString());
         mSipListContainer.removePreference(pref);
         deleteProfile(mProfilesDirectory + p.getProfileName());
-        try {
-            SipManager.close(p.getUriString());
-        } catch (Exception e) {
-            Log.e(TAG, "unregister failed:" + e);
-        }
+        unRegisterProfile(p);
     }
 
     private void saveProfileToStorage(SipProfile p) throws IOException {
