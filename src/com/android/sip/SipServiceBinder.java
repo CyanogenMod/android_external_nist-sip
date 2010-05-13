@@ -16,13 +16,20 @@
 
 package com.android.sip;
 
+import com.android.settings.sip.R;
+
+import android.app.Notification;
+import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.os.IBinder;
 
 // Remove this class once we move the code to framework.
 public class SipServiceBinder extends Service {
     private static final String START_AUTO = "android.net.sip.START_AUTO";
+    private static final String SIP_NOTIFY = "android.net.sip.NOTIFY";
+    private static final int NOTIFICATION_ID = 1;
 
     private SipServiceImpl mService;
 
@@ -31,10 +38,28 @@ public class SipServiceBinder extends Service {
         super.onCreate();
         mService = new SipServiceImpl(this);
         sendBroadcast(new Intent(START_AUTO));
+        startForeground(NOTIFICATION_ID, createNotification());
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return mService;
+    }
+
+    private Notification createNotification() {
+        String title = "SIP service on";
+        Notification n = new Notification(R.drawable.voip, title,
+                System.currentTimeMillis());
+        n.setLatestEventInfo(SipServiceBinder.this, title, "",
+                prepareNotificationIntent());
+        n.flags |= Notification.FLAG_NO_CLEAR;
+        n.flags |= Notification.FLAG_ONGOING_EVENT;
+        return n;
+    }
+
+    private PendingIntent prepareNotificationIntent() {
+        // bogus intent
+        return PendingIntent.getActivity(SipServiceBinder.this, 0,
+                new Intent(SIP_NOTIFY), 0);
     }
 }
