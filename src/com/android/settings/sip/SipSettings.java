@@ -176,7 +176,7 @@ public class SipSettings extends PreferenceActivity {
 
         File root = new File(directory);
         String[] dirs = root.list();
-        if (dirs == null) return null;
+        if (dirs == null) return sipProfileList;
         for (String dir : dirs) {
             File f = new File(
                     new File(root, dir), SipSettings.PROFILE_OBJ_FILE);
