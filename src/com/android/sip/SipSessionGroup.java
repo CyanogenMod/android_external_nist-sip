@@ -239,20 +239,17 @@ class SipSessionGroup implements SipListener {
         process(event);
     }
 
-    private void process(EventObject event) {
+    private synchronized void process(EventObject event) {
         SipSessionImpl session = getSipSession(event);
-
-        synchronized (session) {
-            try {
-                if ((session == null) || !session.process(event)) {
-                    Log.d(TAG, "event not processed: " + event);
-                } else {
-                    Log.d(TAG, " ~~~~~   new state: " + session.mState);
-                }
-            } catch (Throwable e) {
-                Log.e(TAG, "event process error: " + event, e);
-                session.onError(e);
+        try {
+            if ((session != null) && session.process(event)) {
+                Log.d(TAG, " ~~~~~   new state: " + session.mState);
+            } else {
+                Log.d(TAG, "event not processed: " + event);
             }
+        } catch (Throwable e) {
+            Log.e(TAG, "event process error: " + event, e);
+            session.onError(e);
         }
     }
 
@@ -347,7 +344,7 @@ class SipSessionGroup implements SipListener {
                     : listener);
         }
 
-        public synchronized void makeCall(SipProfile peerProfile,
+        public void makeCall(SipProfile peerProfile,
                 SessionDescription sessionDescription) {
             try {
                 process(new MakeCallCommand(peerProfile, sessionDescription));
@@ -356,8 +353,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public synchronized void answerCall(
-                SessionDescription sessionDescription) {
+        public void answerCall(SessionDescription sessionDescription) {
             try {
                 process(new MakeCallCommand(mPeerProfile, sessionDescription));
             } catch (SipException e) {
@@ -365,7 +361,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public synchronized void endCall() {
+        public void endCall() {
             try {
                 process(END_CALL);
             } catch (SipException e) {
@@ -373,8 +369,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public synchronized void changeCall(
-                SessionDescription sessionDescription) {
+        public void changeCall(SessionDescription sessionDescription) {
             try {
                 process(new MakeCallCommand(mPeerProfile, sessionDescription));
             } catch (SipException e) {
@@ -382,7 +377,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public synchronized void register(int duration) {
+        public void register(int duration) {
             try {
                 process(new RegisterCommand(duration));
             } catch (SipException e) {
@@ -390,7 +385,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public synchronized void unregister() {
+        public void unregister() {
             try {
                 process(DEREGISTER);
             } catch (SipException e) {
@@ -412,40 +407,43 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public synchronized boolean process(EventObject evt)
-                throws SipException {
+        public boolean process(EventObject evt) throws SipException {
             Log.d(TAG, " ~~~~~   " + this + ": " + mState + ": processing "
                     + log(evt));
-            boolean processed;
+            synchronized (SipSessionGroup.this) {
+                if (isClosed()) return false;
 
-            switch (mState) {
-            case REGISTERING:
-            case DEREGISTERING:
-                processed = registeringToReady(evt);
-                break;
-            case READY_TO_CALL:
-                processed = readyForCall(evt);
-                break;
-            case INCOMING_CALL:
-                processed = incomingCall(evt);
-                break;
-            case INCOMING_CALL_ANSWERING:
-                processed = incomingCallToInCall(evt);
-                break;
-            case OUTGOING_CALL:
-            case OUTGOING_CALL_RING_BACK:
-                processed = outgoingCall(evt);
-                break;
-            case OUTGOING_CALL_CANCELING:
-                processed = outgoingCallToReady(evt);
-                break;
-            case IN_CALL:
-                processed = inCall(evt);
-                break;
-            default:
-                processed = false;
+                boolean processed;
+
+                switch (mState) {
+                case REGISTERING:
+                case DEREGISTERING:
+                    processed = registeringToReady(evt);
+                    break;
+                case READY_TO_CALL:
+                    processed = readyForCall(evt);
+                    break;
+                case INCOMING_CALL:
+                    processed = incomingCall(evt);
+                    break;
+                case INCOMING_CALL_ANSWERING:
+                    processed = incomingCallToInCall(evt);
+                    break;
+                case OUTGOING_CALL:
+                case OUTGOING_CALL_RING_BACK:
+                    processed = outgoingCall(evt);
+                    break;
+                case OUTGOING_CALL_CANCELING:
+                    processed = outgoingCallToReady(evt);
+                    break;
+                case IN_CALL:
+                    processed = inCall(evt);
+                    break;
+                default:
+                    processed = false;
+                }
+                return (processed || processExceptions(evt));
             }
-            return (processed || processExceptions(evt));
         }
 
         private boolean processExceptions(EventObject evt) throws SipException {
