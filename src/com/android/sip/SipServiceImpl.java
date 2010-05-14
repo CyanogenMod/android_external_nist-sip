@@ -273,9 +273,13 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRinging(ISipSession session, SipProfile caller,
                 byte[] sessionDescription) {
-
-            // send out incoming call broadcast
             try {
+                if (!isRegistered()) {
+                    session.endCall();
+                    return;
+                }
+
+                // send out incoming call broadcast
                 Log.d(TAG, " ringing~~ " + getUri() + ": " + caller.getUri()
                         + ": " + session.getCallId());
                 addPendingSession(session);
@@ -343,6 +347,7 @@ class SipServiceImpl extends ISipService.Stub {
                 mTimer = null;
             }
             mSession = null;
+            mRegistered = false;
         }
 
         public void setListener(ISipSessionListener listener) {
