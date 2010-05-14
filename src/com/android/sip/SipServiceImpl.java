@@ -341,6 +341,7 @@ class SipServiceImpl extends ISipService.Stub {
         }
 
         public synchronized void stop() {
+            if (mSession == null) return;
             if (mConnected) mSession.unregister();
             if (mTimer != null) {
                 mTimer.stop();
