@@ -55,7 +55,7 @@
 
     <!-- Do not translate the following strings. Used for the preference keys -->
     <string name="profile_name">ProfileName</string>
-    <string name="domain_address">ServerAddress</string>
+    <string name="domain_address">SipDomain</string>
     <string name="username">UserName</string>
     <string name="password">Password</string>
     <string name="display_name">DisplayName</string>

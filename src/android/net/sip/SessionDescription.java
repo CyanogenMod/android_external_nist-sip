@@ -19,9 +19,12 @@ package android.net.sip;
 import android.os.Parcel;
 import android.os.Parcelable;
 
-import javax.sip.SipException;
-
+/**
+ * Abstract class of a session description.
+ * @hide
+ */
 public abstract class SessionDescription implements Parcelable {
+    /** @hide */
     public static final Parcelable.Creator<SessionDescription> CREATOR =
             new Parcelable.Creator<SessionDescription>() {
                 public SessionDescription createFromParcel(Parcel in) {
@@ -33,14 +36,27 @@ public abstract class SessionDescription implements Parcelable {
                 }
             };
 
+    /**
+     * Gets the type of the session description; e.g., "SDP".
+     *
+     * @return the session description type
+     */
     public abstract String getType();
+
+    /**
+     * Gets the raw content of the session description.
+     *
+     * @return the content of the session description
+     */
     public abstract byte[] getContent();
 
+    /** @hide */
     public void writeToParcel(Parcel out, int flags) {
         out.writeString(getType());
         out.writeByteArray(getContent());
     }
 
+    /** @hide */
     public int describeContents() {
         return 0;
     }
@@ -54,10 +70,12 @@ public abstract class SessionDescription implements Parcelable {
             mContent = in.createByteArray();
         }
 
+        @Override
         public String getType() {
             return mType;
         }
 
+        @Override
         public byte[] getContent() {
             return mContent;
         }

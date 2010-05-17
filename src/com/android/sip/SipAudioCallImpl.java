@@ -32,8 +32,8 @@ import android.net.sip.ISipSession;
 import android.net.sip.SdpSessionDescription;
 import android.net.sip.SessionDescription;
 import android.net.sip.SipAudioCall;
+import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
-import android.net.sip.ISipService;
 import android.net.sip.SipSessionAdapter;
 import android.net.sip.SipSessionState;
 import android.os.RemoteException;
@@ -268,10 +268,10 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     public synchronized void attachCall(ISipSession session,
-            byte[] sessionDescription) throws SipException {
+            SdpSessionDescription sdp) throws SipException {
         mSipSession = session;
+        mPeerSd = sdp;
         try {
-            mPeerSd = new SdpSessionDescription(sessionDescription);
             session.setListener(this);
         } catch (Throwable e) {
             Log.e(TAG, "attachCall()", e);
@@ -280,9 +280,9 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     public synchronized void makeCall(SipProfile peerProfile,
-            ISipService sipService) throws SipException {
+            SipManager sipManager) throws SipException {
         try {
-            mSipSession = sipService.createSession(mLocalProfile, this);
+            mSipSession = sipManager.createSipSession(mLocalProfile, this);
             mSipSession.makeCall(peerProfile, createOfferSessionDescription());
         } catch (Throwable e) {
             throwSipException(e);
@@ -507,11 +507,11 @@ public class SipAudioCallImpl extends SipSessionAdapter
                 mRtpSession.stopSending();
                 mRtpSession.stopReceiving();
             } else {
-                if (!peerSd.isReceiveOnly(AUDIO)) {
+                if (peerSd.isSending(AUDIO)) {
                     Log.d(TAG, "   start receiving");
                     mRtpSession.startReceiving();
                 }
-                if (!peerSd.isSendOnly(AUDIO)) {
+                if (peerSd.isReceiving(AUDIO)) {
                     Log.d(TAG, "   start sending");
                     mRtpSession.startSending();
                 }

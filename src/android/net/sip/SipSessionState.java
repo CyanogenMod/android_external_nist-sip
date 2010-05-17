@@ -18,22 +18,45 @@ package android.net.sip;
 
 /**
  * Defines {@link ISipSession} states.
+ * @hide
  */
 public enum SipSessionState {
+    /** When session is ready to initiate a call or transaction. */
     READY_TO_CALL,
+
+    /** When the registration request is sent out. */
     REGISTERING,
+
+    /** When the unregistration request is sent out. */
     DEREGISTERING,
+
+    /** When an INVITE request is received. */
     INCOMING_CALL,
+
+    /** When an OK response is sent for the INVITE request received. */
     INCOMING_CALL_ANSWERING,
+
+    /** When an INVITE request is sent. */
     OUTGOING_CALL,
+
+    /** When a RINGING response is received for the INVITE request sent. */
     OUTGOING_CALL_RING_BACK,
+
+    /** When a CANCEL request is sent for the INVITE request sent. */
     OUTGOING_CALL_CANCELING,
 
-    // the states below must be after the session has been established
+    /** When a call is established. */
     IN_CALL,
 
+    /** Some error occurs when making a remote call to {@link ISipSession}. */
     REMOTE_ERROR;
 
+    /**
+     * Checks if the specified string represents the same state as this object.
+     *
+     * @return true if the specified string represents the same state as this
+     *      object
+     */
     public boolean equals(String state) {
         return toString().equals(state);
     }

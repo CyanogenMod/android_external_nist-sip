@@ -36,16 +36,26 @@ import java.util.Vector;
 import javax.sdp.Connection;
 import javax.sdp.MediaDescription;
 import javax.sdp.SdpException;
-import javax.sip.SipException;
 
+/**
+ * A session description that follows SDP (Session Description Protocol).
+ * Refer to <a href="http://tools.ietf.org/html/rfc4566">RFC 4566</a>.
+ * @hide
+ */
 public class SdpSessionDescription extends SessionDescription {
     private static final String TAG = "SDP";
     private static final String AUDIO = "audio";
     private static final String RTPMAP = "rtpmap";
     private static final String PTIME = "ptime";
+    private static final String SENDONLY = "sendonly";
+    private static final String RECVONLY = "recvonly";
+    private static final String INACTIVE = "inactive";
 
     private SessionDescriptionImpl mSessionDescription;
 
+    /**
+     * The audio codec information parsed from "rtpmap".
+     */
     public static class AudioCodec {
         public final int payloadType;
         public final String name;
@@ -61,6 +71,9 @@ public class SdpSessionDescription extends SessionDescription {
         }
     }
 
+    /**
+     * The builder class used to create an {@link SdpSessionDescription} object.
+     */
     public static class Builder {
         private SdpSessionDescription mSdp = new SdpSessionDescription();
         private SessionDescriptionImpl mSessionDescription;
@@ -85,12 +98,12 @@ public class SdpSessionDescription extends SessionDescription {
             }
         }
 
-        public Builder setConnectionInfo(String netType, String addrType,
+        public Builder setConnectionInfo(String networkType, String addressType,
                 String addr) throws SdpException {
             try {
                 ConnectionField connection = new ConnectionField();
-                connection.setNetworkType(netType);
-                connection.setAddressType(addrType);
+                connection.setNetworkType(networkType);
+                connection.setAddressType(addressType);
                 connection.setAddress(addr);
                 mSessionDescription.addField(connection);
             } catch (Exception e) {
@@ -181,6 +194,11 @@ public class SdpSessionDescription extends SessionDescription {
     private SdpSessionDescription() {
     }
 
+    /**
+     * Constructor.
+     *
+     * @param sdpString an SDP session description to parse
+     */
     public SdpSessionDescription(String sdpString) throws SdpException {
         try {
             mSessionDescription = new SDPAnnounceParser(sdpString).parse();
@@ -190,6 +208,11 @@ public class SdpSessionDescription extends SessionDescription {
         verify();
     }
 
+    /**
+     * Constructor.
+     *
+     * @param content a raw SDP session description to parse
+     */
     public SdpSessionDescription(byte[] content) throws SdpException {
         this(new String(content));
     }
@@ -208,6 +231,12 @@ public class SdpSessionDescription extends SessionDescription {
         if (connection != null) connection.getAddress();
     }
 
+    /**
+     * Gets the connection address of the media.
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return the media connection address of the peer
+     */
     public String getPeerMediaAddress(String type) {
         try {
             MediaDescription md = getMediaDescription(type);
@@ -222,6 +251,12 @@ public class SdpSessionDescription extends SessionDescription {
         }
     }
 
+    /**
+     * Gets the connection port number of the media.
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return the media connection port number of the peer
+     */
     public int getPeerMediaPort(String type) {
         try {
             MediaDescription md = getMediaDescription(type);
@@ -243,15 +278,56 @@ public class SdpSessionDescription extends SessionDescription {
         return false;
     }
 
+    /**
+     * Checks if the media is "sendonly".
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return true if the media is "sendonly"
+     */
     public boolean isSendOnly(String type) {
-        boolean answer = containsAttribute(type, "sendonly");
+        boolean answer = containsAttribute(type, SENDONLY);
         Log.d(TAG, "   sendonly? " + answer);
         return answer;
     }
 
+    /**
+     * Checks if the media is "recvonly".
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return true if the media is "recvonly"
+     */
     public boolean isReceiveOnly(String type) {
-        boolean answer = containsAttribute(type, "recvonly");
+        boolean answer = containsAttribute(type, RECVONLY);
         Log.d(TAG, "   recvonly? " + answer);
+        return answer;
+    }
+
+    /**
+     * Checks if the media is in sending; i.e., not "recvonly" and not
+     * "inactive".
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return true if the media is sending
+     */
+    public boolean isSending(String type) {
+        boolean answer = !containsAttribute(type, RECVONLY)
+                && !containsAttribute(type, INACTIVE);
+
+        Log.d(TAG, "   sending? " + answer);
+        return answer;
+    }
+
+    /**
+     * Checks if the media is in receiving; i.e., not "sendonly" and not
+     * "inactive".
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return true if the media is receiving
+     */
+    public boolean isReceiving(String type) {
+        boolean answer = !containsAttribute(type, SENDONLY)
+                && !containsAttribute(type, INACTIVE);
+        Log.d(TAG, "   receiving? " + answer);
         return answer;
     }
 
@@ -268,6 +344,11 @@ public class SdpSessionDescription extends SessionDescription {
         return new AudioCodec(payloadType, name, sampleRate, sampleCount);
     }
 
+    /**
+     * Gets the list of audio codecs in this session description.
+     *
+     * @return the list of audio codecs in this session description
+     */
     public List<AudioCodec> getAudioCodecs() {
         MediaDescription md = getMediaDescription(AUDIO);
         if (md == null) return new ArrayList<AudioCodec>();
@@ -297,16 +378,27 @@ public class SdpSessionDescription extends SessionDescription {
         return codecs;
     }
 
-    public MediaDescription getMediaDescription(String typeWanted) {
+    /**
+     * Gets the media description of the specified type.
+     *
+     * @param type the media type; e.g., "AUDIO"
+     * @return the media description of the specified type
+     */
+    public MediaDescription getMediaDescription(String type) {
         MediaDescription[] all = getMediaDescriptions();
         if ((all == null) || (all.length == 0)) return null;
         for (MediaDescription md : all) {
-            String type = md.getMedia().getMedia();
-            if (type.equalsIgnoreCase(typeWanted)) return md;
+            String t = md.getMedia().getMedia();
+            if (t.equalsIgnoreCase(type)) return md;
         }
         return null;
     }
 
+    /**
+     * Gets all the media descriptions in this session description.
+     *
+     * @return all the media descriptions in this session description
+     */
     public MediaDescription[] getMediaDescriptions() {
         try {
             Vector<MediaDescription> descriptions = (Vector<MediaDescription>)
@@ -319,14 +411,17 @@ public class SdpSessionDescription extends SessionDescription {
         return null;
     }
 
+    @Override
     public String getType() {
         return "sdp";
     }
 
+    @Override
     public byte[] getContent() {
           return mSessionDescription.toString().getBytes();
     }
 
+    @Override
     public String toString() {
         return mSessionDescription.toString();
     }

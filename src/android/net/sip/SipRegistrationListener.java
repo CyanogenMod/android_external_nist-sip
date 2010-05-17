@@ -16,9 +16,33 @@
 
 package android.net.sip;
 
+/**
+ * Listener class to listen to SIP registration events.
+ * @hide
+ */
 public interface SipRegistrationListener {
+    /**
+     * Called when a registration request is sent.
+     *
+     * @param localProfileUri the URI string of the SIP profile to register with
+     */
     void onRegistering(String localProfileUri);
-    void onRegistrationDone(String localProfileUri, long mExpiryTime);
+
+    /**
+     * Called when registration is successfully done.
+     *
+     * @param localProfileUri the URI string of the SIP profile to register with
+     * @param expiryTime duration in second before the registration expires
+     */
+    void onRegistrationDone(String localProfileUri, long expiryTime);
+
+    /**
+     * Called when the registration fails.
+     *
+     * @param localProfileUri the URI string of the SIP profile to register with
+     * @param errorClass name of the exception class
+     * @param errorMessage error message
+     */
     void onRegistrationFailed(String localProfileUri, String errorClass,
             String errorMessage);
 }

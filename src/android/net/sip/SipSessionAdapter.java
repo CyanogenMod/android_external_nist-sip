@@ -16,6 +16,11 @@
 
 package android.net.sip;
 
+/**
+ * Adapter class for {@link ISipSessionListener}. Default implementation of all
+ * callback methods is no-op.
+ * @hide
+ */
 public class SipSessionAdapter extends ISipSessionListener.Stub {
     public void onCalling(ISipSession session) {
     }

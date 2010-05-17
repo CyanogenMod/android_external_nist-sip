@@ -117,7 +117,8 @@ public class SipManager {
     }
 
     /**
-     * Closes to not receive calls for the specified profile.
+     * Closes to not receive calls for the specified profile. All the resources
+     * that were allocated to the profile are also released.
      *
      * @param localProfileUri the URI of the profile to close
      * @throws SipException if calling the SIP service results in an error
@@ -177,7 +178,7 @@ public class SipManager {
             throws SipException {
         SipAudioCall call = new SipAudioCallImpl(context, localProfile);
         call.setListener(listener);
-        call.makeCall(peerProfile, mSipService);
+        call.makeCall(peerProfile, this);
         return call;
     }
 
@@ -223,32 +224,18 @@ public class SipManager {
         }
 
         try {
+            SdpSessionDescription sdp = new SdpSessionDescription(offerSd);
+
             ISipSession session = mSipService.getPendingSession(callId);
             if (session == null) return null;
             SipAudioCall call = new SipAudioCallImpl(
                     context, session.getLocalProfile());
             call.setRingtoneEnabled(ringtoneEnabled);
-            call.attachCall(session, offerSd);
+            call.attachCall(session, sdp);
             call.setListener(listener);
             return call;
-        } catch (RemoteException e) {
-            throw new SipException("createSipAudioCall()", e);
-        }
-    }
-
-    private SipAudioCall createSipAudioCall(Context context, String callId,
-            byte[] offerSd, SipAudioCall.Listener listener)
-            throws SipException {
-        try {
-            ISipSession session = mSipService.getPendingSession(callId);
-            if (session == null) return null;
-            SipAudioCall call = new SipAudioCallImpl(
-                    context, session.getLocalProfile());
-            call.attachCall(session, offerSd);
-            call.setListener(listener);
-            return call;
-        } catch (RemoteException e) {
-            throw new SipException("createSipAudioCall()", e);
+        } catch (Throwable t) {
+            throw new SipException("takeAudioCall()", t);
         }
     }
 
