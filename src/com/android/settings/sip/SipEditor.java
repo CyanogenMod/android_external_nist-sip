@@ -163,8 +163,8 @@ public class SipEditor extends PreferenceActivity
             }
             if (TextUtils.isEmpty(value) &&
                     (pref != mPreferences[PreferenceKey.ProxyAddress.index])) {
-                showAlert(pref.getTitle() +
-                        getResources().getString(R.string.empty_alert));
+                showAlert(pref.getTitle() + " "
+                        + getResources().getString(R.string.empty_alert));
                 return false;
             }
         }
