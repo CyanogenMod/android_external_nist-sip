@@ -103,7 +103,7 @@ class SipSessionGroup implements SipListener {
 
         SipProvider provider = stack.createSipProvider(
                 stack.createListeningPoint(localIp, allocateLocalPort(),
-                        ListeningPoint.UDP));
+                        myself.getProtocol()));
         try {
             provider.addSipListener(this);
         } catch (TooManyListenersException e) {
