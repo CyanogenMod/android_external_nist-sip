@@ -429,7 +429,7 @@ class SipServiceImpl extends ISipService.Stub {
 
             if (duration > 0) {
                 mRegistered = true;
-                mExpiryTime = System.currentTimeMillis() + duration;
+                mExpiryTime = System.currentTimeMillis() + (duration * 1000);
 
                 // allow some overlap to avoid missing calls during renew
                 duration -= MIN_EXPIRY_TIME;
@@ -446,7 +446,8 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRegistrationFailed(ISipSession session, String className,
                 String message) {
-            Log.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession);
+            Log.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession
+                    + ": " + className + ": " + message);
             if (session != mSession) return;
             mRegistered = false;
             // TODO: separate thread for callback
