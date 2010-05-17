@@ -52,14 +52,14 @@ public class SipAutoRegistration extends Service {
     private void registerAllProfiles(final Context context) {
         new Thread(new Runnable() {
             public void run() {
-                SipManager.initialize(context);
+                SipManager sipManager = SipManager.getInstance(context);
                 List<SipProfile> sipProfileList =
                         SipSettings.retrieveSipListFromDirectory(
                         context.getFilesDir().getAbsolutePath()
                         + SipSettings.PROFILES_DIR);
                 for (SipProfile profile : sipProfileList) {
                     try {
-                        SipManager.openToReceiveCalls(profile,
+                        sipManager.openToReceiveCalls(profile,
                                 SipSettings.INCOMING_CALL_ACTION, null);
                     } catch (SipException e) {
                         Log.e(TAG, "failed" + profile.getProfileName(), e);

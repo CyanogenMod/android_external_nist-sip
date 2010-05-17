@@ -62,6 +62,7 @@ public class SipMain extends PreferenceActivity
     private static final int MENU_MUTE = Menu.FIRST + 5;
     private static final int MENU_HOLD = Menu.FIRST + 6;
 
+    private SipManager mSipManager;
     private Preference mCallStatus;
     private EditTextPreference mPeerUri;
     private EditTextPreference mServerUri;
@@ -130,7 +131,7 @@ public class SipMain extends PreferenceActivity
                     }
                 });
 
-                SipManager.initialize(SipMain.this);
+                mSipManager = SipManager.getInstance(SipMain.this);
                 receiveCall(intent, "thread");
             }
         }).start();
@@ -162,7 +163,7 @@ public class SipMain extends PreferenceActivity
         // TODO: what happens if another call is going
         try {
             Log.v(TAG, "create SipAudioCall");
-            mAudioCall = SipManager.takeAudioCall(this, intent,
+            mAudioCall = mSipManager.takeAudioCall(this, intent,
                     createListener());
             if (mAudioCall == null) {
                 throw new SipException("no session to handle audio call");
@@ -176,7 +177,7 @@ public class SipMain extends PreferenceActivity
         if ((mAudioCall == null) || mChanged) {
             if (mChanged) register();
             closeAudioCall();
-            mAudioCall = SipManager.makeAudioCall(this, createLocalProfile(),
+            mAudioCall = mSipManager.makeAudioCall(this, createLocalProfile(),
                     createPeerSipProfile(), createListener());
             Log.v(TAG, "info changed; recreate AudioCall isntance");
         }
@@ -346,9 +347,9 @@ public class SipMain extends PreferenceActivity
         try {
             if (mLocalProfile == null) createLocalProfile();
             if (mChanged) {
-                SipManager.unregister(mLocalProfile, null);
+                mSipManager.unregister(mLocalProfile, null);
             }
-            SipManager.register(createLocalProfile(), EXPIRY_TIME,
+            mSipManager.register(createLocalProfile(), EXPIRY_TIME,
                     createRegistrationListener());
             mChanged = false;
             setCallStatus();

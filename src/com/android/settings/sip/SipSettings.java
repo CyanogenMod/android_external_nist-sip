@@ -79,6 +79,8 @@ public class SipSettings extends PreferenceActivity {
     private static final int CONTEXT_MENU_DELETE_ID = ContextMenu.FIRST + 3;
     private static final int EXPIRY_TIME = 600;
 
+    private SipManager mSipManager;
+
     private String mProfilesDirectory;
 
     private SipProfile mProfile;
@@ -99,7 +101,7 @@ public class SipSettings extends PreferenceActivity {
             mProfile = p;
             setTitle(p.getProfileName());
             try {
-                setSummary(SipManager.isRegistered(p.getUriString())
+                setSummary(mSipManager.isRegistered(p.getUriString())
                         ? REGISTERED : UNREGISTERED);
             } catch (SipException e) {
                 Log.e(TAG, "Error!setProfileSummary:", e);
@@ -160,7 +162,7 @@ public class SipSettings extends PreferenceActivity {
         new Thread(new Runnable() {
             public void run() {
                 try {
-                    SipManager.initialize(SipSettings.this);
+                    mSipManager = SipManager.getInstance(SipSettings.this);
                     retrieveSipListFromStorage();
                 } catch (Exception e) {
                     Log.e(TAG, "isRegistered", e);
@@ -218,7 +220,7 @@ public class SipSettings extends PreferenceActivity {
     private void registerAllProfiles() {
         try {
             for (SipProfile p : mSipProfileList) {
-                if (!SipManager.isRegistered(p.getUriString())) {
+                if (!mSipManager.isRegistered(p.getUriString())) {
                     registerProfile(p);
                 }
             }
@@ -232,7 +234,7 @@ public class SipSettings extends PreferenceActivity {
         String status;
         try {
             Log.v(TAG, "addPreferenceFor profile uri" + p.getUri());
-            status = SipManager.isRegistered(p.getUriString())
+            status = mSipManager.isRegistered(p.getUriString())
                     ? REGISTERED : UNREGISTERED;
         } catch (Exception e) {
             Log.e(TAG, "Cannot get status of profile" + p.getProfileName(), e);
@@ -280,7 +282,7 @@ public class SipSettings extends PreferenceActivity {
         if (p != null) {
             boolean registered;
             try {
-                 registered = SipManager.isRegistered(p.getUriString());
+                 registered = mSipManager.isRegistered(p.getUriString());
             } catch (SipException e) {
                 Log.e(TAG, "Cannot get status of " + p.getUriString(), e);
                 return;
@@ -323,7 +325,7 @@ public class SipSettings extends PreferenceActivity {
     private void registerProfile(SipProfile profile) {
         if (profile != null) {
             try {
-                SipManager.openToReceiveCalls(profile, INCOMING_CALL_ACTION,
+                mSipManager.openToReceiveCalls(profile, INCOMING_CALL_ACTION,
                         createRegistrationListener());
             } catch (Exception e) {
                 Log.e(TAG, "register failed", e);
@@ -334,7 +336,7 @@ public class SipSettings extends PreferenceActivity {
     private void unRegisterProfile(SipProfile profile) {
         if (profile != null) {
             try {
-                SipManager.close(profile.getUriString());
+                mSipManager.close(profile.getUriString());
                 setProfileSummary(profile, UNREGISTERED);
             } catch (Exception e) {
                 Log.e(TAG, "unregister failed:" + profile.getUriString(), e);

@@ -27,11 +27,10 @@ import javax.sip.SipException;
 
 /**
  * The class provides API for various SIP related tasks. Specifically, the API
- * allows the application:
+ * allows the application to:
  * <ul>
- * <li>to register a {@link SipProfile} to have the background SIP service
- *      listen to incoming calls and broadcast them with registered command
- *      string. See
+ * <li>register a {@link SipProfile} to have the background SIP service listen
+ *      to incoming calls and broadcast them with registered command string. See
  *      {@link #openToReceiveCalls(SipProfile, String, SipRegistrationListener)},
  *      {@link #close(String)}, {@link #isOpened(String)} and
  *      {@link isRegistered(String)}. It also facilitates handling of the
@@ -39,12 +38,14 @@ import javax.sip.SipException;
  *      {@link #isIncomingCallIntent(Intent)}, {@link #getCallId(Intent)},
  *      {@link #getOfferSessionDescription(Intent)} and
  *      {@link #takeAudioCall(Context, Intent, SipAudioCall.Listener)}.</li>
- * <li>to make/take SIP-based audio calls. See
+ * <li>make/take SIP-based audio calls. See
  *      {@link #makeAudioCall(Context, SipProfile, SipProfile, SipAudioCall.Listener)}
  *      and {@link #takeAudioCall(Context, Intent, SipAudioCall.Listener}.</li>
- * <li>to register/unregister with a SIP service provider. See
+ * <li>register/unregister with a SIP service provider. See
  *      {@link #register(SipProfile, int, ISipSessionListener)} and
  *      {@link #unregister(SipProfile, ISipSessionListener)}.</li>
+ * <li>process SIP events directly with a {@link ISipSession} created by
+ *      {@link createSipSession(SipProfile, ISipSessionListener)}.</li>
  * </ul>
  * @hide
  */
@@ -52,87 +53,162 @@ public class SipManager {
     private static final String CALL_ID_KEY = "CallID";
     private static final String OFFER_SD_KEY = "OfferSD";
 
-    private static ISipService sSipService;
-    private static BinderHelper<ISipService> sBinderHelper;
+    private ISipService mSipService;
 
-    private SipManager() {
-    }
-
-
-    private static void createSipService(Context context) {
-        if (sSipService != null) return;
-        if (sBinderHelper == null) {
-            sBinderHelper = new BinderHelper<ISipService>(
-                    context, ISipService.class);
-            sBinderHelper.startService();
-        }
-        sSipService = ISipService.Stub.asInterface(sBinderHelper.getBinder());
-    }
+    // Will be removed once the SIP service is integrated into framework
+    private BinderHelper<ISipService> mBinderHelper;
 
     /**
-     * Initializes the background SIP service. Will be removed once the SIP
-     * service is integrated into framework.
+     * Creates a manager instance and initializes the background SIP service.
+     * Will be removed once the SIP service is integrated into framework.
+     *
+     * @param context context to start the SIP service
+     * @return the manager instance
      */
-    public static void initialize(final Context context) {
+    public static SipManager getInstance(final Context context) {
+        final SipManager manager = new SipManager();
         // ISipService must be created from non-main thread.
         if (Looper.getMainLooper().getThread() == Thread.currentThread()) {
             new Thread(new Runnable() {
                 public void run() {
-                    createSipService(context);
+                    manager.createSipService(context);
                 }
             }).start();
         } else {
-            createSipService(context);
+            manager.createSipService(context);
         }
+        return manager;
     }
 
-    public static void openToReceiveCalls(SipProfile localProfile,
+    private SipManager() {
+    }
+
+    private void createSipService(Context context) {
+        if (mSipService != null) return;
+        if (mBinderHelper == null) {
+            mBinderHelper = new BinderHelper<ISipService>(
+                    context, ISipService.class);
+            mBinderHelper.startService();
+        }
+        mSipService = ISipService.Stub.asInterface(mBinderHelper.getBinder());
+    }
+
+    /**
+     * Enables to receive incoming calls for the specified SIP profile. When
+     * enabled, the SIP service will register the profile to the corresponding
+     * server periodically in order to receive calls from the server.
+     *
+     * @param localProfile the SIP profile to receive incoming calls for
+     * @param incomingCallBroadcastAction the action to be broadcast when an
+     *      incoming call is received
+     * @param listener to listen to registration events; can be null
+     * @throws SipException if the profile contains incorrect settings or
+     *      calling the SIP service results in an error
+     */
+    public void openToReceiveCalls(SipProfile localProfile,
             String incomingCallBroadcastAction,
             SipRegistrationListener listener) throws SipException {
         try {
-            sSipService.openToReceiveCalls(localProfile,
+            mSipService.openToReceiveCalls(localProfile,
                     incomingCallBroadcastAction, createRelay(listener));
         } catch (RemoteException e) {
             throw new SipException("openToReceiveCalls()", e);
         }
     }
 
-    public static void close(String localProfileUri) throws SipException {
+    /**
+     * Closes to not receive calls for the specified profile.
+     *
+     * @param localProfileUri the URI of the profile to close
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public void close(String localProfileUri) throws SipException {
         try {
-            sSipService.close(localProfileUri);
+            mSipService.close(localProfileUri);
         } catch (RemoteException e) {
             throw new SipException("close()", e);
         }
     }
 
-    public static boolean isOpened(String localProfileUri) throws SipException {
+    /**
+     * Checks if the specified profile is enabled to receive calls.
+     *
+     * @param localProfileUri the URI of the profile in question
+     * @return true if the profile is enabled to receive calls
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public boolean isOpened(String localProfileUri) throws SipException {
         try {
-            return sSipService.isOpened(localProfileUri);
+            return mSipService.isOpened(localProfileUri);
         } catch (RemoteException e) {
             throw new SipException("isOpened()", e);
         }
     }
 
-    public static boolean isRegistered(String localProfileUri) throws SipException {
+    /**
+     * Checks if the specified profile is registered to the server for
+     * receiving calls.
+     *
+     * @param localProfileUri the URI of the profile in question
+     * @return true if the profile is registered to the server
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public boolean isRegistered(String localProfileUri) throws SipException {
         try {
-            return sSipService.isRegistered(localProfileUri);
+            return mSipService.isRegistered(localProfileUri);
         } catch (RemoteException e) {
             throw new SipException("isRegistered()", e);
         }
     }
 
-    public static SipAudioCall makeAudioCall(Context context,
-            SipProfile localProfile, SipProfile peerProfile,
-            SipAudioCall.Listener listener) throws SipException {
+    /**
+     * Creates a {@link SipAudioCall} to make a call.
+     *
+     * @param context context to create a {@link SipAudioCall} object
+     * @param localProfile the SIP profile to make the call from
+     * @param peerProfile the SIP profile to make the call to
+     * @param listener to listen to the call events from {@link SipAudioCall};
+     *      can be null
+     * @return a {@link SipAudioCall} object
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public SipAudioCall makeAudioCall(Context context, SipProfile localProfile,
+            SipProfile peerProfile, SipAudioCall.Listener listener)
+            throws SipException {
         SipAudioCall call = new SipAudioCallImpl(context, localProfile);
         call.setListener(listener);
-        call.makeCall(peerProfile, sSipService);
+        call.makeCall(peerProfile, mSipService);
         return call;
     }
 
-    public static SipAudioCall takeAudioCall(Context context,
+    /**
+     * The method calls {@code takeAudioCall(context, incomingCallIntent,
+     * listener, true}.
+     *
+     * @see #takeAudioCall(Context, Intent, SipAudioCall.Listener, boolean)
+     */
+    public SipAudioCall takeAudioCall(Context context,
             Intent incomingCallIntent, SipAudioCall.Listener listener)
             throws SipException {
+        return takeAudioCall(context, incomingCallIntent, listener, true);
+    }
+
+    /**
+     * Creates a {@link SipAudioCall} to take an incoming call. Before the call
+     * is returned, the listener will receive a
+     * {@link SipAudioCall#Listener.onRinging(SipAudioCall, SipProfile)}
+     * callback.
+     *
+     * @param context context to create a {@link SipAudioCall} object
+     * @param incomingCallIntent the incoming call broadcast intent
+     * @param listener to listen to the call events from {@link SipAudioCall};
+     *      can be null
+     * @return a {@link SipAudioCall} object
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public SipAudioCall takeAudioCall(Context context,
+            Intent incomingCallIntent, SipAudioCall.Listener listener,
+            boolean ringtoneEnabled) throws SipException {
         if (incomingCallIntent == null) return null;
 
         String callId = getCallId(incomingCallIntent);
@@ -147,10 +223,11 @@ public class SipManager {
         }
 
         try {
-            ISipSession session = sSipService.getPendingSession(callId);
+            ISipSession session = mSipService.getPendingSession(callId);
             if (session == null) return null;
             SipAudioCall call = new SipAudioCallImpl(
                     context, session.getLocalProfile());
+            call.setRingtoneEnabled(ringtoneEnabled);
             call.attachCall(session, offerSd);
             call.setListener(listener);
             return call;
@@ -159,11 +236,11 @@ public class SipManager {
         }
     }
 
-    private static SipAudioCall createSipAudioCall(Context context,
-            String callId, byte[] offerSd, SipAudioCall.Listener listener)
+    private SipAudioCall createSipAudioCall(Context context, String callId,
+            byte[] offerSd, SipAudioCall.Listener listener)
             throws SipException {
         try {
-            ISipSession session = sSipService.getPendingSession(callId);
+            ISipSession session = mSipService.getPendingSession(callId);
             if (session == null) return null;
             SipAudioCall call = new SipAudioCallImpl(
                     context, session.getLocalProfile());
@@ -175,6 +252,12 @@ public class SipManager {
         }
     }
 
+    /**
+     * Checks if the intent is an incoming call broadcast intent.
+     *
+     * @param intent the intent in question
+     * @return true if the intent is an incoming call broadcast intent
+     */
     public static boolean isIncomingCallIntent(Intent intent) {
         if (intent == null) return false;
         String callId = getCallId(intent);
@@ -182,15 +265,37 @@ public class SipManager {
         return ((callId != null) && (offerSd != null));
     }
 
+    /**
+     * Gets the call ID from the specified incoming call broadcast intent.
+     *
+     * @param incomingCallIntent the incoming call broadcast intent
+     * @return the call ID or null if the intent does not contain it
+     */
     public static String getCallId(Intent incomingCallIntent) {
         return incomingCallIntent.getStringExtra(CALL_ID_KEY);
     }
 
+    /**
+     * Gets the offer session description from the specified incoming call
+     * broadcast intent.
+     *
+     * @param incomingCallIntent the incoming call broadcast intent
+     * @return the offer session description or null if the intent does not
+     *      have it
+     */
     public static byte[] getOfferSessionDescription(Intent incomingCallIntent) {
         return incomingCallIntent.getByteArrayExtra(OFFER_SD_KEY);
     }
 
-    /** @hide */
+    /**
+     * Creates an incoming call broadcast intent.
+     *
+     * @param action the action string to broadcast
+     * @param callId the call ID of the incoming call
+     * @param sessionDescription the session description of the incoming call
+     * @return the incoming call intent
+     * @hide
+     */
     public static Intent createIncomingCallBroadcast(String action,
             String callId, byte[] sessionDescription) {
         Intent intent = new Intent(action);
@@ -199,10 +304,21 @@ public class SipManager {
         return intent;
     }
 
-    public static void register(SipProfile localProfile, int expiryTime,
+    /**
+     * Registers the profile to the corresponding server for receiving calls.
+     * {@link #openToReceiveCalls(SipProfile, String, SipRegistrationListener)}
+     * is still needed to be called at least once in order for the SIP service
+     * to broadcast an intent when an incoming call is received.
+     *
+     * @param localProfile the SIP profile to register with
+     * @param expiryTime registration expiration time (in second)
+     * @param listener to listen to the registration events
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public void register(SipProfile localProfile, int expiryTime,
             SipRegistrationListener listener) throws SipException {
         try {
-            ISipSession session = sSipService.createSession(
+            ISipSession session = mSipService.createSession(
                     localProfile, createRelay(listener));
             session.register(expiryTime);
         } catch (RemoteException e) {
@@ -210,14 +326,45 @@ public class SipManager {
         }
     }
 
-    public static void unregister(SipProfile localProfile,
+    /**
+     * Registers the profile to the corresponding server for receiving calls.
+     * {@link #openToReceiveCalls(SipProfile, String, SipRegistrationListener)}
+     * is still needed to be called at least once in order for the SIP service
+     * to broadcast an intent when an incoming call is received.
+     *
+     * @param localProfile the SIP profile to register with
+     * @param expiryTime registration expiration time (in second)
+     * @param listener to listen to the registration events
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public void unregister(SipProfile localProfile,
             SipRegistrationListener listener) throws SipException {
         try {
-            ISipSession session = sSipService.createSession(
+            ISipSession session = mSipService.createSession(
                     localProfile, createRelay(listener));
             session.unregister();
         } catch (RemoteException e) {
             throw new SipException("unregister()", e);
+        }
+    }
+
+    /**
+     * Gets the {@link ISipSession} that handles the incoming call. For audio
+     * calls, consider to use {@link SipAudioCall} to handle the incoming call.
+     * See {@link #takeAudioCall(Context, Intent, SipAudioCall.Listener)}.
+     * Note that the method may be called only once for the same intent. For
+     * subsequent calls on the same intent, the method returns null.
+     *
+     * @param incomingCallIntent the incoming call broadcast intent
+     * @return the session object that handles the incoming call
+     */
+    public ISipSession getSessionFor(Intent incomingCallIntent)
+            throws SipException {
+        try {
+            String callId = getCallId(incomingCallIntent);
+            return mSipService.getPendingSession(callId);
+        } catch (RemoteException e) {
+            throw new SipException("getSessionFor()", e);
         }
     }
 
@@ -226,10 +373,18 @@ public class SipManager {
         return ((listener == null) ? null : new ListenerRelay(listener));
     }
 
-    public static ISipSession createSipSession(SipProfile localProfile,
+    /**
+     * Creates a {@link ISipSession} with the specified profile. Use other
+     * methods, if applicable, instead of interacting with {@link ISipSession}
+     * directly.
+     *
+     * @param localProfile the SIP profile the session is associated with
+     * @param listener to listen to SIP session events
+     */
+    public ISipSession createSipSession(SipProfile localProfile,
             ISipSessionListener listener) throws SipException {
         try {
-            return sSipService.createSession(localProfile, listener);
+            return mSipService.createSession(localProfile, listener);
         } catch (RemoteException e) {
             throw new SipException("createSipSession()", e);
         }
