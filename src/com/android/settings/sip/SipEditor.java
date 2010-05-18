@@ -98,8 +98,7 @@ public class SipEditor extends PreferenceActivity
                 : savedInstanceState.getParcelable(KEY_PROFILE));
 
         for (PreferenceKey key : PreferenceKey.values()) {
-            mPreferences[key.index] =
-                    setupPreference(getResources().getString(key.text));
+            mPreferences[key.index] = setupPreference(getString(key.text));
         }
         loadPreferencesFromProfile(p);
     }
@@ -164,7 +163,7 @@ public class SipEditor extends PreferenceActivity
             if (TextUtils.isEmpty(value) &&
                     (pref != mPreferences[PreferenceKey.ProxyAddress.index])) {
                 showAlert(pref.getTitle() + " "
-                        + getResources().getString(R.string.empty_alert));
+                        + getString(R.string.empty_alert));
                 return false;
             }
         }
@@ -213,11 +212,10 @@ public class SipEditor extends PreferenceActivity
         if (p != null) {
             Log.v(TAG, "Edit the existing profile : " + p.getProfileName());
             try {
-                Class profileClass =
-                        Class.forName("android.net.sip.SipProfile");
+                Class profileClass = SipProfile.class;
                 for (PreferenceKey key : PreferenceKey.values()) {
                     Method meth = profileClass.getMethod(GET_METHOD_PREFIX +
-                            getResources().getString(key.text), (Class[])null);
+                            getString(key.text), (Class[])null);
                     if (key == PreferenceKey.Port) {
                         setValue(key,
                                 String.valueOf(meth.invoke(p, (Object[])null)));

@@ -280,18 +280,18 @@ public class SipSettings extends PreferenceActivity {
         SipProfile p = getProfile(getProfilePositionFrom(
                     (AdapterContextMenuInfo) menuInfo));
         if (p != null) {
-            boolean registered;
+            boolean opened;
             try {
-                 registered = mSipManager.isRegistered(p.getUriString());
+                 opened = mSipManager.isOpened(p.getUriString());
             } catch (SipException e) {
                 Log.e(TAG, "Cannot get status of " + p.getUriString(), e);
                 return;
             }
             menu.setHeaderTitle(p.getProfileName());
             menu.add(0, CONTEXT_MENU_REGISTER_ID, 0,
-                    R.string.sip_menu_register).setEnabled(!registered);
+                    R.string.sip_menu_register).setEnabled(!opened);
             menu.add(0, CONTEXT_MENU_UNREGISTER_ID, 0,
-                    R.string.sip_menu_unregister).setEnabled(registered);
+                    R.string.sip_menu_unregister).setEnabled(opened);
             menu.add(0, CONTEXT_MENU_EDIT_ID, 0, R.string.sip_menu_edit);
             menu.add(0, CONTEXT_MENU_DELETE_ID, 0, R.string.sip_menu_delete);
         }
