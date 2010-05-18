@@ -147,7 +147,8 @@ class SipHelper {
     private ContactHeader createContactHeader(SipProfile profile)
             throws ParseException, SipException {
         ListeningPoint lp = getListeningPoint();
-        SipURI contactURI = createSipUri(profile.getUserName(), lp);
+        SipURI contactURI =
+                createSipUri(profile.getUserName(), profile.getProtocol(), lp);
 
         Address contactAddress = mAddressFactory.createAddress(contactURI);
         contactAddress.setDisplayName(profile.getDisplayName());
@@ -161,11 +162,12 @@ class SipHelper {
         return contactHeader;
     }
 
-    private SipURI createSipUri(String username, ListeningPoint lp)
-            throws ParseException {
+    private SipURI createSipUri(String username, String transport,
+            ListeningPoint lp) throws ParseException {
         SipURI uri = mAddressFactory.createSipURI(username, lp.getIPAddress());
         try {
             uri.setPort(lp.getPort());
+            uri.setTransportParam(transport);
         } catch (InvalidArgumentException e) {
             throw new RuntimeException(e);
         }
