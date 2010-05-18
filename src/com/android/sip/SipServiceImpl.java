@@ -104,7 +104,7 @@ class SipServiceImpl extends ISipService.Stub {
     }
 
     public synchronized void close(String localProfileUri) {
-        SipSessionGroupExt group = mSipGroups.get(localProfileUri);
+        SipSessionGroupExt group = mSipGroups.remove(localProfileUri);
         if (group != null) group.closeToNotReceiveCalls();
     }
 
