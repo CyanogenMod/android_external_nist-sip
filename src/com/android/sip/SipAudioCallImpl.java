@@ -338,10 +338,9 @@ public class SipAudioCallImpl extends SipSessionAdapter
     private SessionDescription createAnswerSessionDescription() {
         try {
             // choose an acceptable media from mPeerSd to answer
-            AudioCodec codec =
-                    AudioCodec.getSystemSupportedCodec(getCodec(mPeerSd).name);
+            SdpSessionDescription.AudioCodec codec = getCodec(mPeerSd);
             SdpSessionDescription.Builder sdpBuilder =
-                    createSdpBuilder(false, convert(codec));
+                    createSdpBuilder(false, codec);
             if (mPeerSd.isSendOnly(AUDIO)) {
                 sdpBuilder.addMediaAttribute(AUDIO, "recvonly", (String) null);
             } else if (mPeerSd.isReceiveOnly(AUDIO)) {
