@@ -36,7 +36,7 @@ public class IncomingCallReceiver extends BroadcastReceiver {
             return;
         }
 
-        intent.setClass(context, SipMain.class);
+        intent.setClass(context, SipCallUi.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(intent);
     }
