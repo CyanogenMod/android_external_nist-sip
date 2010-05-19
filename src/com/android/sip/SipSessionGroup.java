@@ -264,7 +264,8 @@ class SipSessionGroup implements SipListener {
             if (isRequestEvent(Request.INVITE, evt)) {
                 RequestEvent event = (RequestEvent) evt;
                 SipSessionImpl newSession = new SipSessionImpl(mProxy);
-                newSession.mServerTransaction = mSipHelper.sendRinging(event);
+                newSession.mServerTransaction = mSipHelper.sendRinging(event,
+                        generateTag());
                 newSession.mDialog = newSession.mServerTransaction.getDialog();
                 newSession.mInviteReceived = event;
                 newSession.mPeerProfile = createPeerProfile(event.getRequest());
@@ -393,7 +394,7 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        private String generateTag() {
+        protected String generateTag() {
             // TODO: based on myself's profile
             return String.valueOf((long) (Math.random() * 1000000L));
         }
@@ -588,10 +589,9 @@ class SipSessionGroup implements SipListener {
             // expect MakeCallCommand(answering) , END_CALL cmd , Cancel
             if (evt instanceof MakeCallCommand) {
                 // answer call
-                String tag = mInCall ? mDialog.getLocalTag() : generateTag();
                 mServerTransaction = mSipHelper.sendInviteOk(mInviteReceived,
                         mLocalProfile,
-                        ((MakeCallCommand) evt).getSessionDescription(), tag,
+                        ((MakeCallCommand) evt).getSessionDescription(),
                         mServerTransaction);
                 mState = SipSessionState.INCOMING_CALL_ANSWERING;
                 return true;

@@ -290,13 +290,19 @@ class SipHelper {
     /**
      * @param event the INVITE request event
      */
-    public ServerTransaction sendRinging(RequestEvent event)
+    public ServerTransaction sendRinging(RequestEvent event, String tag)
             throws SipException {
         try {
             Request request = event.getRequest();
             ServerTransaction transaction = getServerTransaction(event);
-            transaction.sendResponse(
-                    mMessageFactory.createResponse(Response.RINGING, request));
+
+            Response response = mMessageFactory.createResponse(Response.RINGING,
+                    request);
+
+            ToHeader toHeader = (ToHeader) response.getHeader(ToHeader.NAME);
+            toHeader.setTag(tag);
+            response.addHeader(toHeader);
+            transaction.sendResponse(response);
             return transaction;
         } catch (ParseException e) {
             throw new SipException("sendRinging()", e);
@@ -308,17 +314,13 @@ class SipHelper {
      */
     public ServerTransaction sendInviteOk(RequestEvent event,
             SipProfile localProfile, SessionDescription sessionDescription,
-            String tag, ServerTransaction inviteTransaction)
+            ServerTransaction inviteTransaction)
             throws SipException {
         try {
             Request request = event.getRequest();
             Response response = mMessageFactory.createResponse(Response.OK,
                     request);
             response.addHeader(createContactHeader(localProfile));
-            ToHeader toHeader = (ToHeader) response.getHeader(ToHeader.NAME);
-            toHeader.setTag(tag);
-            response.addHeader(toHeader);
-
             response.setContent(sessionDescription.getContent(),
                     mHeaderFactory.createContentTypeHeader(
                             "application", sessionDescription.getType()));
@@ -329,6 +331,7 @@ class SipHelper {
             if (inviteTransaction.getState() != TransactionState.COMPLETED) {
                 inviteTransaction.sendResponse(response);
             }
+
             return inviteTransaction;
         } catch (ParseException e) {
             throw new SipException("sendInviteOk()", e);
