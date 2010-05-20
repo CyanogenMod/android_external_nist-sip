@@ -129,6 +129,18 @@ public class SipAudioCallImpl extends SipSessionAdapter
         mSessionId = -1L;
     }
 
+    public synchronized SipProfile getLocalProfile() {
+        return mLocalProfile;
+    }
+
+    public synchronized SipProfile getPeerProfile() {
+        try {
+            return (mSipSession == null) ? null : mSipSession.getPeerProfile();
+        } catch (RemoteException e) {
+            return null;
+        }
+    }
+
     public synchronized SipSessionState getState() {
         if (mSipSession == null) return SipSessionState.READY_TO_CALL;
         try {

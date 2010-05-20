@@ -113,12 +113,18 @@ class SipServiceImpl extends ISipService.Stub {
         return ((group != null) ? group.isOpened() : false);
     }
 
-    public boolean isRegistered(String localProfileUri) {
+    public synchronized boolean isRegistered(String localProfileUri) {
         SipSessionGroupExt group = mSipGroups.get(localProfileUri);
         return ((group != null) ? group.isRegistered() : false);
     }
 
-    public ISipSession createSession(SipProfile localProfile,
+    public synchronized void setRegistrationListener(String localProfileUri,
+            ISipSessionListener listener) {
+        SipSessionGroupExt group = mSipGroups.get(localProfileUri);
+        if (group != null) group.setListener(listener);
+    }
+
+    public synchronized ISipSession createSession(SipProfile localProfile,
             ISipSessionListener listener) {
         if (!mConnected) return null;
         try {
@@ -130,7 +136,7 @@ class SipServiceImpl extends ISipService.Stub {
         }
     }
 
-    public ISipSession getPendingSession(String callId) {
+    public synchronized ISipSession getPendingSession(String callId) {
         if (callId == null) return null;
         return mPendingSessions.get(callId);
     }

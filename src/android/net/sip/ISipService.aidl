@@ -30,6 +30,8 @@ interface ISipService {
     void close(in String localProfileUri);
     boolean isOpened(String localProfileUri);
     boolean isRegistered(String localProfileUri);
+    void setRegistrationListener(String localProfileUri,
+            ISipSessionListener listener);
 
     ISipSession createSession(in SipProfile localProfile,
             in ISipSessionListener listener);

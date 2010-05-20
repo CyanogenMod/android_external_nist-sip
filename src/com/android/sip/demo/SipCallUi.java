@@ -35,6 +35,7 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
@@ -46,7 +47,7 @@ import javax.sip.SipException;
 public class SipCallUi extends Activity implements OnClickListener {
     private static final String TAG = SipCallUi.class.getSimpleName();
 
-    private TextView mCallerBox;
+    private TextView mPeerBox;
     private TextView mMyIp;
     private TextView mCallStatus;
     private Button mEndButton;
@@ -56,20 +57,17 @@ public class SipCallUi extends Activity implements OnClickListener {
     private Button mModeButton;
 
     private SipManager mSipManager;
-
-    private SipProfile mLocalProfile;
     private SipAudioCall mAudioCall;
 
     private MyDialog mDialog;
     private Throwable mError;
-    private boolean mChanged;
     private boolean mSpeakerMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.call_ui);
-        mCallerBox = (TextView) findViewById(R.id.caller);
+        mPeerBox = (TextView) findViewById(R.id.caller);
         mCallStatus = (TextView) findViewById(R.id.call_status);
         mMyIp = (TextView) findViewById(R.id.local_ip);
         mEndButton = (Button) findViewById(R.id.hang_up_btn);
@@ -85,7 +83,7 @@ public class SipCallUi extends Activity implements OnClickListener {
         mHoldButton.setText("Hold");
         mDtmfButton.setText("DTMF 1");
         mModeButton.setText("Speaker mode");
-        mCallerBox.setText("...");
+        mPeerBox.setText("...");
 
         mEndButton.setOnClickListener(this);
         mMuteButton.setOnClickListener(this);
@@ -102,21 +100,15 @@ public class SipCallUi extends Activity implements OnClickListener {
                 setText(mMyIp, getLocalIp());
 
                 mSipManager = SipManager.getInstance(SipCallUi.this);
-                receiveCall(intent, "thread");
+                if (SipManager.isIncomingCallIntent(intent)) {
+                    receiveCall(intent);
+                } else {
+                    makeCall(intent);
+                }
             }
         }).start();
-    }
 
-    @Override
-    protected void onNewIntent(Intent intent) {
-        Log.v(TAG, " onNewIntent(): " + intent);
-        setIntent(intent);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        receiveCall(getIntent(), "onResume()");
+        setAllButtonsEnabled(false);
     }
 
     @Override
@@ -125,11 +117,27 @@ public class SipCallUi extends Activity implements OnClickListener {
         closeAudioCall();
     }
 
-    private synchronized void receiveCall(Intent intent, String msg) {
-        Log.v(TAG, msg + ": receiveCall(): any call comes in? " + intent);
+    private void receiveCall(Intent intent) {
+        Log.v(TAG, "receiveCall(): any call comes in? " + intent);
         if (SipManager.isIncomingCallIntent(intent)) {
             createSipAudioCall(intent);
             setIntent(null);
+        }
+    }
+
+    private void makeCall(Intent intent) {
+        if ("call".equals(intent.getAction())) {
+            SipProfile caller = (SipProfile)
+                    intent.getParcelableExtra("caller");
+            String callee = intent.getStringExtra("callee");
+            Log.v(TAG, "call from " + caller + " to " + callee);
+            try {
+                makeAudioCall(caller, callee);
+                setText(mPeerBox, "Dialing " + callee + "...");
+            } catch (Exception e) {
+                Log.e(TAG, "makeCall()", e);
+                setCallStatus(e);
+            }
         }
     }
 
@@ -147,16 +155,15 @@ public class SipCallUi extends Activity implements OnClickListener {
         }
     }
 
-    private void makeAudioCall() throws Exception {
-        // TODO
-        SipProfile localProfile = null;
-        SipProfile peerProfile = null;
-        if ((mAudioCall == null) || mChanged) {
-            closeAudioCall();
-            mAudioCall = mSipManager.makeAudioCall(this, localProfile,
-                    peerProfile, createListener());
-            Log.v(TAG, "info changed; recreate AudioCall isntance");
+    private void makeAudioCall(SipProfile caller, String calleeUri)
+            throws Exception {
+        if (mAudioCall != null) {
+            Log.v(TAG, "a call is ongoing; no new call is made");
+            return;
         }
+        SipProfile callee = new SipProfile.Builder(calleeUri).build();
+        mAudioCall = mSipManager.makeAudioCall(this, caller, callee,
+                createListener());
     }
 
     private void setCallStatus(Throwable e) {
@@ -166,6 +173,9 @@ public class SipCallUi extends Activity implements OnClickListener {
 
     private void setCallStatus() {
         setText(mCallStatus, getCallStatus());
+        if (mError != null) {
+            setText(mPeerBox, mError.getMessage());
+        }
         mError = null;
     }
 
@@ -189,6 +199,7 @@ public class SipCallUi extends Activity implements OnClickListener {
             public void onCalling(SipAudioCall call) {
                 if (mAudioCall != call) return;
                 setCallStatus();
+                showToast("Dialing...");
             }
 
             public void onRinging(SipAudioCall call, SipProfile caller) {
@@ -203,6 +214,9 @@ public class SipCallUi extends Activity implements OnClickListener {
                 if (mAudioCall != call) return;
                 setCallStatus();
                 setText(mHoldButton, (isOnHold() ? "Unhold": "Hold"));
+                setText(mPeerBox, getDisplayName(call.getPeerProfile()));
+                showToast("Call established");
+                setAllButtonsEnabled(true);
             }
 
             public void onCallEnded(SipAudioCall call) {
@@ -218,7 +232,8 @@ public class SipCallUi extends Activity implements OnClickListener {
                 setCallStatus();
                 mAudioCall = null;
                 setAllButtonsEnabled(false);
-                setText(mCallerBox, "...");
+                setText(mPeerBox, "...");
+                showToast("Call ended");
             }
 
             public void onError(SipAudioCall call, String errorMessage) {
@@ -228,22 +243,13 @@ public class SipCallUi extends Activity implements OnClickListener {
                 setCallStatus();
                 mAudioCall = null;
                 setAllButtonsEnabled(false);
-                setText(mCallerBox, "...");
+                showToast("Call ended");
             }
         };
     }
 
     private void closeAudioCall() {
         if (mAudioCall != null) mAudioCall.close();
-    }
-
-    private void makeCall() {
-        try {
-            makeAudioCall();
-        } catch (Exception e) {
-            Log.e(TAG, "makeCall()", e);
-            setCallStatus(e);
-        }
     }
 
     private void endCall() {
@@ -332,7 +338,7 @@ public class SipCallUi extends Activity implements OnClickListener {
     }
 
     private String getCallStatus() {
-        if (mError != null) return mError.getMessage();
+        if (mError != null) return "Error!";
         if (mAudioCall == null) return "Ready to call";
         switch (getCallState()) {
         case READY_TO_CALL:
@@ -388,6 +394,14 @@ public class SipCallUi extends Activity implements OnClickListener {
         if (mDialog != null) mDialog.prepareDialog(id, dialog);
     }
 
+    private String getDisplayName(SipProfile profile) {
+        String name = profile.getDisplayName();
+        if (TextUtils.isEmpty(name)) {
+            name = profile.getUserName() + "@" + profile.getSipDomain();
+        }
+        return name;
+    }
+
     private class CallNotificationDialog implements MyDialog {
         private SipProfile mCaller;
 
@@ -399,25 +413,17 @@ public class SipCallUi extends Activity implements OnClickListener {
             return 0;
         }
 
-        private String getCallerName() {
-            String name = mCaller.getDisplayName();
-            if (TextUtils.isEmpty(name)) {
-                name = mCaller.getUserName() + "@" + mCaller.getSipDomain();
-            }
-            return name;
-        }
-
         public Dialog createDialog(int id) {
             if (id != getId()) return null;
             Log.d(TAG, "create call notification dialog");
             return new AlertDialog.Builder(SipCallUi.this)
-                    .setTitle(getCallerName())
+                    .setTitle(getDisplayName(mCaller))
                     .setIcon(android.R.drawable.ic_dialog_alert)
                     .setPositiveButton("Answer",
                             new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface dialog, int w) {
                                     answerCall();
-                                    mCallerBox.setText(getCallerName());
+                                    mPeerBox.setText(getDisplayName(mCaller));
                                 }
                             })
                     .setNegativeButton("Hang up",
@@ -436,7 +442,7 @@ public class SipCallUi extends Activity implements OnClickListener {
 
         public void prepareDialog(int id, Dialog dialog) {
             if (id != getId()) return;
-            dialog.setTitle(getCallerName());
+            dialog.setTitle(getDisplayName(mCaller));
         }
     }
 
@@ -455,5 +461,14 @@ public class SipCallUi extends Activity implements OnClickListener {
             Log.w(TAG, "getLocalIp(): " + e);
             return "127.0.0.1";
         }
+    }
+
+    private void showToast(final String message) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                Toast.makeText(SipCallUi.this, message, Toast.LENGTH_SHORT)
+                        .show();
+            }
+        });
     }
 }

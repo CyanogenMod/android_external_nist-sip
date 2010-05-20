@@ -208,6 +208,20 @@ public interface SipAudioCall {
     boolean isInCall();
 
     /**
+     * Gets the local SIP profile.
+     *
+     * @return the local SIP profile
+     */
+    SipProfile getLocalProfile();
+
+    /**
+     * Gets the peer's SIP profile.
+     *
+     * @return the peer's SIP profile
+     */
+    SipProfile getPeerProfile();
+
+    /**
      * Gets the state of the {@link ISipSession} that carries this call.
      *
      * @return the session state

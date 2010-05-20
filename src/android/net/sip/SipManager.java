@@ -117,6 +117,25 @@ public class SipManager {
     }
 
     /**
+     * Sets the listener to listen to registration events. No effect if the
+     * profile has not been opened to receive calls
+     * (see {@link #openToReceiveCalls(SipProfile, String, SipRegistrationListener)}).
+     *
+     * @param localProfileUri the URI of the profile
+     * @param listener to listen to registration events; can be null
+     * @throws SipException if calling the SIP service results in an error
+     */
+    public void setRegistrationListener(String localProfileUri,
+            SipRegistrationListener listener) throws SipException {
+        try {
+            mSipService.setRegistrationListener(
+                    localProfileUri, createRelay(listener));
+        } catch (RemoteException e) {
+            throw new SipException("setRegistrationListener()", e);
+        }
+    }
+
+    /**
      * Closes to not receive calls for the specified profile. All the resources
      * that were allocated to the profile are also released.
      *
