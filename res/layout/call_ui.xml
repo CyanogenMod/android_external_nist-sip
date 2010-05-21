@@ -51,7 +51,7 @@ android:textSize="18sp"
 </Button>
 <Button
 android:id="@+id/hang_up_btn"
-android:layout_width="135px"
+android:layout_width="160px"
 android:layout_height="wrap_content"
 android:layout_below="@+id/local_ip_title"
 android:layout_centerHorizontal="true"
