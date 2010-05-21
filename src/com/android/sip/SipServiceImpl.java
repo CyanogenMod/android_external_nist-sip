@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, The Android Open Source Project
+ * Copyright (C) 2010, The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -176,15 +176,15 @@ class SipServiceImpl extends ISipService.Stub {
 
     private synchronized void onConnectivityChanged(
             String type, boolean connected) {
+        Log.d(TAG, "onConnectivityChanged(): "
+                + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
+                + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
+
         if (type.equals(mNetworkType)) {
             if (mConnected == connected) return;
         } else {
             if (!connected) return;
         }
-
-        Log.d(TAG, "onConnectivityChanged(): "
-                + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
-                + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
 
         try {
             boolean wasConnected = mConnected;
@@ -259,6 +259,8 @@ class SipServiceImpl extends ISipService.Stub {
                 if (mOpened) openToReceiveCalls();
             } else {
                 // close mSipGroup but remember mOpened
+                Log.v(TAG, "  close auto reg temporarily: " + getUri() + ": "
+                        + mIncomingCallBroadcastAction);
                 mSipGroup.close();
                 mAutoRegistration.stop();
             }
