@@ -32,10 +32,12 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
+import android.widget.AdapterView;
 import android.widget.AutoCompleteTextView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.Spinner;
+import android.widget.SpinnerAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -96,12 +98,12 @@ public class SipCallSetup extends Activity implements OnClickListener {
         mRegisterButton.setOnClickListener(this);
         mSettingsButton.setOnClickListener(this);
 
-        setCallStatus("...");
-
         new Thread(new Runnable() {
             public void run() {
                 setText(mMyIp, getLocalIp());
                 mSipManager = SipManager.getInstance(SipCallSetup.this);
+                setRegistrationListener(createRegistrationListener());
+                setCallerSpinnerListener();
             }
         }).start();
         getCalleeSet();
@@ -112,6 +114,7 @@ public class SipCallSetup extends Activity implements OnClickListener {
     protected void onResume() {
         super.onResume();
         setupCallers();
+        setCallStatus("...");
         setRegistrationListener(createRegistrationListener());
     }
 
@@ -152,6 +155,29 @@ public class SipCallSetup extends Activity implements OnClickListener {
         mCallee.setAdapter(adapter);
     }
 
+    private void setCallerSpinnerListener() {
+        mCaller.setOnItemSelectedListener(
+                new AdapterView.OnItemSelectedListener() {
+                    public void onItemSelected(AdapterView<?> parent, View view,
+                            int position, long id) {
+                        SipProfile profile = getProfile(position);
+                        boolean registered = false;
+                        try {
+                            registered = mSipManager.isRegistered(
+                                    profile.getUriString());
+                        } catch (Exception e) {
+                            Log.e(TAG, "OnItemSelected: " + e);
+                        }
+                        setCallStatus(
+                                registered ? "Registered" : "Unregistered");
+                    }
+
+                    public void onNothingSelected(AdapterView<?> parent) {
+                        // no-op
+                    }
+                });
+    }
+
     private List<ProfileWrapper> getSipProfiles() {
         List<SipProfile> profiles = ProfileUtil.retrieveSipProfiles(
                 getFilesDir().getAbsolutePath());
@@ -186,12 +212,12 @@ public class SipCallSetup extends Activity implements OnClickListener {
         String callee = mCallee.getText().toString();
         ProfileWrapper caller = (ProfileWrapper) mCaller.getSelectedItem();
         Log.v(TAG, "calling " + callee + " from " + caller);
-        if (TextUtils.isEmpty(callee)) {
-            showToast("No one to call to.");
-            return;
-        }
         if (caller == null) {
             showToast("Press 'Settings' to set up a SIP profile");
+            return;
+        }
+        if (TextUtils.isEmpty(callee)) {
+            showToast("No one to call to.");
             return;
         }
         if (!callee.contains("@")) {
@@ -227,33 +253,42 @@ public class SipCallSetup extends Activity implements OnClickListener {
         }
     }
 
-    private void setRegistrationListener(SipRegistrationListener listener) {
-        ProfileWrapper myself = (ProfileWrapper) mCaller.getSelectedItem();
-        if (myself == null) return;
-        try {
-            mSipManager.setRegistrationListener(myself.mProfile.getUriString(),
-                    listener);
-        } catch (Exception e) {
-            Log.e(TAG, "setRegistrationListener()", e);
+    private synchronized void setRegistrationListener(
+            SipRegistrationListener listener) {
+        if (mSipManager == null) return;
+        SpinnerAdapter adapter = mCaller.getAdapter();
+        for (int i = 0, count = adapter.getCount(); i < count; i++) {
+            SipProfile profile = ((ProfileWrapper) adapter.getItem(i)).mProfile;
+            try {
+                mSipManager.setRegistrationListener(profile.getUriString(),
+                        listener);
+            } catch (Exception e) {
+                Log.e(TAG, "setRegistrationListener()", e);
+            }
         }
+    }
+
+    private SipProfile getProfile(int position) {
+        return ((ProfileWrapper) mCaller.getAdapter().getItem(position))
+                .mProfile;
     }
 
     private SipRegistrationListener createRegistrationListener() {
         return new SipRegistrationListener() {
             public void onRegistrationDone(String uri, long expiryTime) {
                 setCallStatus("Registered");
-                showToast("Registration done");
+                showToast("Registration done: " + uri);
             }
 
             public void onRegistrationFailed(String uri, String className,
                     String message) {
-                setCallStatus("registration error: " + message);
+                setCallStatus("failed to register " + uri + ": " + message);
                 showToast("Registration failed");
             }
 
             public void onRegistering(String uri) {
                 setCallStatus("Registering...");
-                showToast("Registering...");
+                showToast("Registering " + uri + "...");
             }
         };
     }
