@@ -24,6 +24,10 @@ import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipAudioCall;
 import android.net.sip.SipManager;
@@ -107,14 +111,19 @@ public class SipCallUi extends Activity implements OnClickListener {
                 }
             }
         }).start();
+    }
 
-        setAllButtonsEnabled(false);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        enableProximitySensor();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         closeAudioCall();
+        disableProximitySensor();
     }
 
     private void receiveCall(Intent intent) {
@@ -471,4 +480,33 @@ public class SipCallUi extends Activity implements OnClickListener {
             }
         });
     }
+
+    private void enableProximitySensor() {
+        SensorManager sensorManager = (SensorManager)
+                getSystemService(Context.SENSOR_SERVICE);
+        Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+
+        sensorManager.registerListener(mProximityListener, sensor,
+                SensorManager.SENSOR_DELAY_NORMAL);
+    }
+
+    private void disableProximitySensor() {
+        ((SensorManager) getSystemService(Context.SENSOR_SERVICE))
+                .unregisterListener(mProximityListener);
+    }
+
+    SensorEventListener mProximityListener = new SensorEventListener() {
+        public void onSensorChanged(SensorEvent event) {
+            StringBuilder b = new StringBuilder();
+            for (float f : event.values) {
+                b.append(", " + f);
+            }
+            Log.v("Proximity", "onSensorChanged: " + event + b);
+            boolean far = (event.values[0] > 1f);
+            setAllButtonsEnabled((mAudioCall != null) && mAudioCall.isInCall() && far);
+        }
+
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
 }
