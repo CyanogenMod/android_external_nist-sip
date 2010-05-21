@@ -143,6 +143,8 @@ private:
     bool encode();
     bool decode();
 
+    void adjustMicGain(int16_t *buf, int len, int factor);
+
     int getPacketFromJB(RtpSocket *rtpSocket, uint8_t **buffer, timeval *deadline);
 
     class Sender : public Thread
@@ -317,6 +319,23 @@ void AudioStream::stopReceiving()
     }
 }
 
+// TODO: remove this function after the mic level issue was fixed in driver.
+void AudioStream::adjustMicGain(int16_t *buf, int len, int factor)
+{
+    int i, j;
+    int bound = 32768/factor;
+    for (i = 0; i < len; i++) {
+        j = buf[i];
+        if (j > bound) {
+            buf[i] = 32767;
+        } else if (j < -bound) {
+            buf[i] = -32767;
+        } else {
+            buf[i] = (int16_t)(factor*j);
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------
 
 bool AudioStream::encode()
@@ -330,6 +349,8 @@ bool AudioStream::encode()
         LOGD("read");
         return false;
     }
+
+    adjustMicGain(samples, length/sizeof(int16_t), 8);
 
     mLocalSequence++;
     mLocalTimestamp += mSampleCount;
