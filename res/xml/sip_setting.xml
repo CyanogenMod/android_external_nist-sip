@@ -21,6 +21,10 @@
         android:title="@string/auto_registration">
     </CheckBoxPreference>
 
+    <CheckBoxPreference android:key="sip_call_first"
+        android:title="@string/call_priority">
+    </CheckBoxPreference>
+
     <PreferenceScreen android:key="add_sip_account"
         android:title="@string/add_sip_account">
     </PreferenceScreen>

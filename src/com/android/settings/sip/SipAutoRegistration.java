@@ -36,6 +36,7 @@ import javax.sip.SipException;
 public class SipAutoRegistration extends Service {
     public static final String SIP_SHARED_PREFERENCES = "SIP_PREFERENCES";
     public static final String AUTOREG_FLAG = "AUTOREG";
+    public static final String SIP_CALL_FIRST_FLAG = "SIPFIRST";
     private static final String TAG = "SipAutoRegistration";
 
     @Override

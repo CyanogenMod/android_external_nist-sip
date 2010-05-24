@@ -23,6 +23,8 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.Uri;
 import android.os.IBinder;
 
 // Remove this class once we move the code to framework.
@@ -39,11 +41,20 @@ public class SipServiceBinder extends Service {
         mService = new SipServiceImpl(this);
         sendBroadcast(new Intent(START_AUTO));
         startForeground(NOTIFICATION_ID, createNotification());
+        registerOutgoingCallReceiver();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return mService;
+    }
+
+    private void registerOutgoingCallReceiver() {
+        IntentFilter intentfilter = new IntentFilter();
+        intentfilter.addAction(Intent.ACTION_NEW_OUTGOING_CALL);
+        intentfilter.setPriority(-1);
+        registerReceiver(new com.android.sip.demo.OutgoingCallReceiver(),
+                intentfilter);
     }
 
     private Notification createNotification() {

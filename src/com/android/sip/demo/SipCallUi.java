@@ -21,6 +21,7 @@ import com.android.settings.sip.R;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -33,6 +34,8 @@ import android.net.sip.SipAudioCall;
 import android.net.sip.SipManager;
 import android.net.sip.SipSessionState;
 import android.os.Bundle;
+import android.provider.CallLog;
+import android.provider.CallLog.Calls;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
@@ -44,6 +47,7 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.Date;
 import javax.sip.SipException;
 
 /**
@@ -66,6 +70,9 @@ public class SipCallUi extends Activity implements OnClickListener {
     private MyDialog mDialog;
     private Throwable mError;
     private boolean mSpeakerMode;
+
+    private long mCallTime;
+    private String mCallee;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -138,11 +145,12 @@ public class SipCallUi extends Activity implements OnClickListener {
         if ("call".equals(intent.getAction())) {
             SipProfile caller = (SipProfile)
                     intent.getParcelableExtra("caller");
-            String callee = intent.getStringExtra("callee");
-            Log.v(TAG, "call from " + caller + " to " + callee);
+            mCallee = intent.getStringExtra("callee");
+            mCallTime = 0;
+            Log.v(TAG, "call from " + caller + " to " + mCallee);
             try {
-                makeAudioCall(caller, callee);
-                setText(mPeerBox, "Dialing " + callee + "...");
+                makeAudioCall(caller, mCallee);
+                setText(mPeerBox, "Dialing " + mCallee + "...");
             } catch (Exception e) {
                 Log.e(TAG, "makeCall()", e);
                 setCallStatus(e);
@@ -220,6 +228,7 @@ public class SipCallUi extends Activity implements OnClickListener {
 
             public void onCallEstablished(SipAudioCall call) {
                 Log.v(TAG, "onCallEstablished(): " + call + " <--> " + mAudioCall);
+                mCallTime = new Date().getTime();
                 if (mAudioCall != call) return;
                 setCallStatus();
                 setText(mHoldButton, (isOnHold() ? "Unhold": "Hold"));
@@ -265,9 +274,26 @@ public class SipCallUi extends Activity implements OnClickListener {
         try {
             mAudioCall.endCall();
             mSpeakerMode = false;
+            if (mCallTime != 0) addCallLog();
         } catch (SipException e) {
             Log.e(TAG, "endCall()", e);
             setCallStatus(e);
+        }
+    }
+
+    private void addCallLog() {
+        long insertDate = new Date().getTime();
+        ContentValues value = new ContentValues();
+        value.put(Calls.NUMBER, mCallee.substring(0, mCallee.indexOf('@')));
+        value.put(Calls.DATE, insertDate);
+        value.put(Calls.DURATION, (insertDate - mCallTime)/1000);
+        value.put(Calls.TYPE, Calls.OUTGOING_TYPE);
+        value.put(Calls.NEW, 0);
+        try {
+            getContentResolver().acquireProvider(
+                    CallLog.AUTHORITY).insert(Calls.CONTENT_URI, value);
+        } catch (android.os.RemoteException e) {
+            Log.e(TAG, "cannot add calllog", e);
         }
     }
 

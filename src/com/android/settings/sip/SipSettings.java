@@ -62,6 +62,7 @@ public class SipSettings extends PreferenceActivity {
     static final String PROFILES_DIR = "/profiles/";
 
     private static final String PREF_AUTO_REG = "auto_registration";
+    private static final String PREF_SIP_CALL_FIRST = "sip_call_first";
     private static final String PREF_ADD_SIP = "add_sip_account";
     private static final String PREF_SIP_LIST = "sip_account_list";
     private static final String TAG = "SipSettings";
@@ -139,20 +140,39 @@ public class SipSettings extends PreferenceActivity {
                 });
     }
 
+    public interface ClickEventCallback {
+        public void handle(boolean enabled);
+    }
+
+    private class AutoRegistrationClickHandler implements ClickEventCallback {
+        public void handle(boolean enabled) {
+            if (enabled) registerAllProfiles();
+        }
+    }
+
     private void registerForAutoRegistrationListener() {
         mSettingsEditor = getSharedPreferences(
                 SipAutoRegistration.SIP_SHARED_PREFERENCES,
                 Context.MODE_WORLD_READABLE).edit();
-        ((CheckBoxPreference) findPreference(PREF_AUTO_REG))
+        setCheckBoxClickEventListener(PREF_AUTO_REG,
+                SipAutoRegistration.AUTOREG_FLAG,
+                new AutoRegistrationClickHandler());
+        setCheckBoxClickEventListener(PREF_SIP_CALL_FIRST,
+                SipAutoRegistration.SIP_CALL_FIRST_FLAG,
+                null);
+    }
+
+    private void setCheckBoxClickEventListener(String preference,
+            final String flag, final ClickEventCallback clickEvent) {
+        ((CheckBoxPreference) findPreference(preference))
                 .setOnPreferenceClickListener(
                 new OnPreferenceClickListener() {
                     public boolean onPreferenceClick(Preference preference) {
                         boolean enabled =
                                 ((CheckBoxPreference) preference).isChecked();
-                        mSettingsEditor.putBoolean(
-                                SipAutoRegistration.AUTOREG_FLAG, enabled);
+                        mSettingsEditor.putBoolean(flag, enabled);
                         mSettingsEditor.commit();
-                        if (enabled) registerAllProfiles();
+                        if (clickEvent != null) clickEvent.handle(enabled);
                         return true;
                     }
                 });
