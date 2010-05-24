@@ -274,7 +274,7 @@ public class SipCallUi extends Activity implements OnClickListener {
         try {
             mAudioCall.endCall();
             mSpeakerMode = false;
-            if (mCallTime != 0) addCallLog();
+            if (mCallee != null) addCallLog();
         } catch (SipException e) {
             Log.e(TAG, "endCall()", e);
             setCallStatus(e);
