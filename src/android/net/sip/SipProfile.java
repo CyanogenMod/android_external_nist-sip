@@ -85,6 +85,9 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
          * @throws ParseException if the string is not a valid URI
          */
         public Builder(String uriString) throws ParseException {
+            if (uriString == null) {
+                throw new NullPointerException("uriString cannot be null");
+            }
             URI uri = mAddressFactory.createURI(fix(uriString));
             if (uri instanceof SipURI) {
                 mUri = (SipURI) uri;
@@ -105,6 +108,10 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
          */
         public Builder(String username, String serverDomain)
                 throws ParseException {
+            if ((username == null) || (serverDomain == null)) {
+                throw new NullPointerException(
+                        "username and serverDomain cannot be null");
+            }
             mUri = mAddressFactory.createSipURI(username, serverDomain);
             mProfile.mDomain = serverDomain;
         }
@@ -159,6 +166,9 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
          */
         public Builder setProtocol(String protocol)
                 throws InvalidArgumentException {
+            if (protocol == null) {
+                throw new NullPointerException("protocol cannot be null");
+            }
             protocol = protocol.toUpperCase();
             if (!protocol.equals("UDP") && !protocol.equals("TCP")) {
                 throw new InvalidArgumentException(
