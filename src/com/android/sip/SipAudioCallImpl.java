@@ -442,12 +442,12 @@ public class SipAudioCallImpl extends SipSessionAdapter
 
     public synchronized void setInCallMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
-                .setMode(AudioManager.MODE_IN_CALL);
+                .setSpeakerphoneOn(false);
     }
 
     public synchronized void setSpeakerMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
-                .setMode(AudioManager.MODE_NORMAL);
+                .setSpeakerphoneOn(true);
     }
 
     public synchronized void sendDtmf(int code) {

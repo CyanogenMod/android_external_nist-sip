@@ -90,10 +90,7 @@ public class SipCallUi extends Activity implements OnClickListener {
         ((TextView) findViewById(R.id.local_ip_title)).setText("Local IP");
         ((TextView) findViewById(R.id.call_status_title)).setText("Call status");
         mEndButton.setText("End call");
-        mMuteButton.setText("Mute");
-        mHoldButton.setText("Hold");
         mDtmfButton.setText("DTMF 1");
-        mModeButton.setText("Speaker mode");
         mPeerBox.setText("...");
 
         mEndButton.setOnClickListener(this);
@@ -231,7 +228,6 @@ public class SipCallUi extends Activity implements OnClickListener {
                 mCallTime = new Date().getTime();
                 if (mAudioCall != call) return;
                 setCallStatus();
-                setText(mHoldButton, (isOnHold() ? "Unhold": "Hold"));
                 setText(mPeerBox, getDisplayName(call.getPeerProfile()));
                 showToast("Call established");
                 setAllButtonsEnabled(true);
@@ -348,16 +344,13 @@ public class SipCallUi extends Activity implements OnClickListener {
             mSpeakerMode = !mSpeakerMode;
             if (mSpeakerMode) {
                 setSpeakerMode();
-                mModeButton.setText("Speaker OFF");
             } else {
                 setInCallMode();
-                mModeButton.setText("Speaker ON");
             }
         } else if (mDtmfButton == v) {
             sendDtmf();
         } else if (mMuteButton == v) {
             mAudioCall.toggleMute();
-            mMuteButton.setText(mAudioCall.isMuted() ? "Unmute" : "Mute");
         } else if (mHoldButton == v) {
             if (isOnHold()) {
                 continueCall();

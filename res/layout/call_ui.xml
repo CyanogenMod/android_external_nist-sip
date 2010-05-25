@@ -4,15 +4,31 @@ android:layout_width="fill_parent"
 android:layout_height="fill_parent"
 xmlns:android="http://schemas.android.com/apk/res/android"
 >
-<Button
-android:id="@+id/mode_btn"
+<RelativeLayout
 android:layout_width="wrap_content"
 android:layout_height="wrap_content"
+android:layout_centerHorizontal="true"
 android:layout_below="@+id/hang_up_btn"
-android:layout_alignLeft="@+id/mute_btn"
-android:textSize="18sp"
 >
-</Button>
+    <ToggleButton
+    android:id="@+id/mode_btn"
+    android:layout_width="135px"
+    android:layout_height="wrap_content"
+    android:layout_centerVertical="true"
+    android:layout_alignParentLeft="true"
+    android:textSize="18sp"
+    android:textOn="Speaker"
+    android:textOff="Speaker"
+    />
+    <Button
+    android:id="@+id/dtmf_btn"
+    android:layout_width="135px"
+    android:layout_height="wrap_content"
+    android:layout_alignTop="@+id/mode_btn"
+    android:layout_toRightOf="@+id/mode_btn"
+    android:textSize="18sp"
+    />
+</RelativeLayout>
 <TextView
 android:id="@+id/local_ip"
 android:layout_width="wrap_content"
@@ -22,33 +38,28 @@ android:layout_centerHorizontal="true"
 android:textSize="18sp"
 >
 </TextView>
-<Button
-android:id="@+id/dtmf_btn"
-android:layout_width="135px"
-android:layout_height="wrap_content"
-android:layout_below="@+id/hang_up_btn"
-android:layout_toRightOf="@+id/mode_btn"
-android:textSize="18sp"
->
-</Button>
-<Button
+<ToggleButton
 android:id="@+id/hold_btn"
 android:layout_width="135px"
 android:layout_height="wrap_content"
 android:layout_below="@+id/local_ip_title"
 android:layout_toRightOf="@+id/hang_up_btn"
 android:textSize="18sp"
+android:textOn="Hold"
+android:textOff="Hold"
 >
-</Button>
-<Button
+</ToggleButton>
+<ToggleButton
 android:id="@+id/mute_btn"
 android:layout_width="135px"
 android:layout_height="wrap_content"
 android:layout_below="@+id/local_ip_title"
 android:layout_toLeftOf="@+id/hang_up_btn"
 android:textSize="18sp"
+android:textOn="Mute"
+android:textOff="Mute"
 >
-</Button>
+</ToggleButton>
 <Button
 android:id="@+id/hang_up_btn"
 android:layout_width="160px"
