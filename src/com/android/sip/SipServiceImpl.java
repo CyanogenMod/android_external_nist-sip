@@ -39,6 +39,7 @@ import android.util.Log;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -321,10 +322,52 @@ class SipServiceImpl extends ISipService.Stub {
         }
     }
 
+    private class KeepAliveProcess implements Runnable {
+        private ISipSession mSession;
+        private WakeupTimer mTimer;
+        private static final int DURATION = 15;
+
+        public KeepAliveProcess(ISipSession session) {
+            mSession = session;
+        }
+
+        private synchronized void scheduleNextHeartbeat() {
+            if (mTimer == null) {
+                mTimer = WakeupTimer.Factory.getInstance()
+                        .createTimer();
+            }
+            Log.d(TAG, "Send SIP keepalive request " + DURATION + "s later.");
+            mTimer.cancel(this);
+            mTimer.set(DURATION * 1000L, this);
+        }
+
+        public void start() {
+            scheduleNextHeartbeat();
+        }
+
+        public void run() {
+            Log.d(TAG, "  ~~~ keepalive");
+            try {
+                mSession.sendKeepAlive();
+            } catch (android.os.RemoteException e) {
+                Log.e(TAG, "Cannot send keepalive", e);
+            }
+            scheduleNextHeartbeat();
+        }
+
+        public synchronized void stop() {
+            if (mTimer != null) {
+                mTimer.stop();
+                mTimer = null;
+            }
+        }
+    }
+
     private class AutoRegistrationProcess extends SipSessionAdapter
             implements Runnable {
         private SipSessionGroup.SipSessionImpl mSession;
         private ISipSessionListener mListener;
+        private KeepAliveProcess mKeepAliveProcess;
         private WakeupTimer mTimer;
         private int mBackoff = 1;
         private boolean mRegistered;
@@ -354,6 +397,10 @@ class SipServiceImpl extends ISipService.Stub {
             if (mTimer != null) {
                 mTimer.stop();
                 mTimer = null;
+            }
+            if (mKeepAliveProcess != null) {
+                mKeepAliveProcess.stop();
+                mKeepAliveProcess = null;
             }
             mSession = null;
             mRegistered = false;
@@ -386,6 +433,22 @@ class SipServiceImpl extends ISipService.Stub {
         public void run() {
             Log.d(TAG, "  ~~~ registering");
             if (mConnected) mSession.register(EXPIRY_TIME);
+        }
+
+        private boolean isBehindNAT(String address) {
+            try {
+                byte[] d = InetAddress.getByName(address).getAddress();
+                if ((d[0] == 10) ||
+                        (((0x000000FF & ((int)d[0])) == 172) &&
+                        ((0x000000F0 & ((int)d[1])) == 16)) ||
+                        (((0x000000FF & ((int)d[0])) == 192) &&
+                        ((0x000000FF & ((int)d[1])) == 168))) {
+                    return true;
+                }
+            } catch (UnknownHostException e) {
+                Log.e(TAG, "isBehindAT()" + address, e);
+            }
+            return false;
         }
 
         private synchronized void scheduleNextRegistration(int duration) {
@@ -443,6 +506,12 @@ class SipServiceImpl extends ISipService.Stub {
                 duration -= MIN_EXPIRY_TIME;
                 if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
                 scheduleNextRegistration(duration);
+                if (isBehindNAT(mLocalIp)) {
+                    if (mKeepAliveProcess == null) {
+                        mKeepAliveProcess = new KeepAliveProcess(session);
+                    }
+                    mKeepAliveProcess.start();
+                }
             } else {
                 mRegistered = false;
                 mExpiryTime = -1L;
