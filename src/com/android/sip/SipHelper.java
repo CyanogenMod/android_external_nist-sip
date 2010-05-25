@@ -174,6 +174,17 @@ class SipHelper {
         return uri;
     }
 
+    public void sendKeepAlive(SipProfile profile)
+            throws SipException {
+        try {
+            String proxy = profile.getOutboundProxy();
+            if (proxy == null) proxy = profile.getSipDomain();
+            getListeningPoint().sendHeartbeat(proxy, profile.getPort());
+        } catch (Exception e) {
+            throw new SipException("sendKeepAlive()", e);
+        }
+    }
+
     public ClientTransaction sendRegister(SipProfile userProfile, String tag,
             int expiry) throws SipException {
         try {

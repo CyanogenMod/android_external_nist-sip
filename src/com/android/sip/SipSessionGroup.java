@@ -394,6 +394,14 @@ class SipSessionGroup implements SipListener {
             }
         }
 
+        public void sendKeepAlive() {
+            try {
+                process(new KeepAliveCommand());
+            } catch (SipException e) {
+                Log.e(TAG, "Cannot send keepalive command out", e);
+            }
+        }
+
         protected String generateTag() {
             // TODO: based on myself's profile
             return String.valueOf((long) (Math.random() * 1000000L));
@@ -580,6 +588,9 @@ class SipSessionGroup implements SipListener {
                 addSipSession(this);
                 mState = SipSessionState.DEREGISTERING;
                 mProxy.onRegistering(this);
+                return true;
+            } else if (evt instanceof KeepAliveCommand) {
+                mSipHelper.sendKeepAlive(mLocalProfile);
                 return true;
             }
             return false;
@@ -774,6 +785,9 @@ class SipSessionGroup implements SipListener {
                         ((MakeCallCommand) evt).getSessionDescription());
                 mState = SipSessionState.OUTGOING_CALL;
                 return true;
+            } else if (evt instanceof KeepAliveCommand) {
+                mSipHelper.sendKeepAlive(mLocalProfile);
+                return true;
             }
             return false;
         }
@@ -895,6 +909,12 @@ class SipSessionGroup implements SipListener {
             return ((ResponseEvent) evt).getResponse().toString();
         } else {
             return evt.toString();
+        }
+    }
+
+    private class KeepAliveCommand extends EventObject {
+        public KeepAliveCommand() {
+            super(SipSessionGroup.this);
         }
     }
 
