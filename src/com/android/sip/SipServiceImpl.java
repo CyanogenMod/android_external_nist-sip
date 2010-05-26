@@ -75,7 +75,7 @@ class SipServiceImpl extends ISipService.Stub {
     private ConnectivityReceiver mConnectivityReceiver;
 
     public SipServiceImpl(Context context) {
-        Log.d(TAG, " service started!");
+        FLog.d(TAG, " service started!");
         mContext = context;
         mConnectivityReceiver = new ConnectivityReceiver();
         context.registerReceiver(mConnectivityReceiver,
@@ -93,14 +93,14 @@ class SipServiceImpl extends ISipService.Stub {
     public synchronized void openToReceiveCalls(SipProfile localProfile,
             String incomingCallBroadcastAction,
             ISipSessionListener listener) {
-        Log.d(TAG, "openToReceiveCalls: " + localProfile.getUriString() + ": "
+        FLog.d(TAG, "openToReceiveCalls: " + localProfile.getUriString() + ": "
                 + incomingCallBroadcastAction + ": " + listener);
         try {
             SipSessionGroupExt group = createGroup(localProfile,
                     incomingCallBroadcastAction, listener);
             group.openToReceiveCalls();
         } catch (SipException e) {
-            Log.e(TAG, "openToReceiveCalls()", e);
+            FLog.e(TAG, "openToReceiveCalls()", e);
             // TODO: how to send the exception back
         }
     }
@@ -149,7 +149,7 @@ class SipServiceImpl extends ISipService.Stub {
             s.connect(InetAddress.getByName("192.168.1.1"), 80);
             mLocalIp = s.getLocalAddress().getHostAddress();
         } catch (IOException e) {
-            Log.w(TAG, "determineLocalIp()", e);
+            FLog.w(TAG, "determineLocalIp()", e);
             // dont do anything; suppose there should be a connectivity change
         }
     }
@@ -184,7 +184,7 @@ class SipServiceImpl extends ISipService.Stub {
 
     private synchronized void onConnectivityChanged(
             String type, boolean connected) {
-        Log.d(TAG, "onConnectivityChanged(): "
+        FLog.d(TAG, "onConnectivityChanged(): "
                 + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
                 + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
 
@@ -212,7 +212,7 @@ class SipServiceImpl extends ISipService.Stub {
                 }
             }
         } catch (SipException e) {
-            Log.e(TAG, "onConnectivityChanged()", e);
+            FLog.e(TAG, "onConnectivityChanged()", e);
         }
     }
 
@@ -255,7 +255,7 @@ class SipServiceImpl extends ISipService.Stub {
                 mSipGroup.openToReceiveCalls(this);
                 mAutoRegistration.start(mSipGroup);
             }
-            Log.v(TAG, "  openToReceiveCalls: " + getUri() + ": "
+            FLog.v(TAG, "  openToReceiveCalls: " + getUri() + ": "
                     + mIncomingCallBroadcastAction);
         }
 
@@ -267,7 +267,7 @@ class SipServiceImpl extends ISipService.Stub {
                 if (mOpened) openToReceiveCalls();
             } else {
                 // close mSipGroup but remember mOpened
-                Log.v(TAG, "  close auto reg temporarily: " + getUri() + ": "
+                FLog.v(TAG, "  close auto reg temporarily: " + getUri() + ": "
                         + mIncomingCallBroadcastAction);
                 mSipGroup.close();
                 mAutoRegistration.stop();
@@ -278,7 +278,7 @@ class SipServiceImpl extends ISipService.Stub {
             mOpened = false;
             mSipGroup.closeToNotReceiveCalls();
             mAutoRegistration.stop();
-            Log.v(TAG, "   close: " + getUri() + ": "
+            FLog.v(TAG, "   close: " + getUri() + ": "
                     + mIncomingCallBroadcastAction);
         }
 
@@ -313,7 +313,7 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onError(ISipSession session, String errorClass,
                 String message) {
-            Log.d(TAG, "sip session error: " + errorClass + ": " + message);
+            FLog.d(TAG, "sip session error: " + errorClass + ": " + message);
         }
 
         public synchronized boolean isOpened() {
@@ -393,7 +393,7 @@ class SipServiceImpl extends ISipService.Stub {
                 // TODO: when rfc5626 is deployed, use reg-id and sip.instance
                 // in registration to avoid adding duplicate entries to server
                 mSession.unregister();
-                Log.v(TAG, "start AutoRegistrationProcess for "
+                FLog.v(TAG, "start AutoRegistrationProcess for "
                         + mSession.getLocalProfile().getUriString());
             }
         }
@@ -438,7 +438,7 @@ class SipServiceImpl extends ISipService.Stub {
         }
 
         public void run() {
-            Log.d(TAG, "  ~~~ registering");
+            FLog.d(TAG, "  ~~~ registering");
             if (mConnected) mSession.register(EXPIRY_TIME);
         }
 
@@ -463,7 +463,7 @@ class SipServiceImpl extends ISipService.Stub {
                 mTimer = WakeupTimer.Factory.getInstance()
                         .createTimer();
             }
-            Log.d(TAG, "Refresh registration " + duration + "s later.");
+            FLog.d(TAG, "Refresh registration " + duration + "s later.");
             mTimer.cancel(this);
             mTimer.set(duration * 1000L, this);
         }
@@ -480,7 +480,7 @@ class SipServiceImpl extends ISipService.Stub {
 
         @Override
         public void onRegistering(ISipSession session) {
-            Log.d(TAG, "onRegistering(): " + session + ": " + mSession);
+            FLog.d(TAG, "onRegistering(): " + session + ": " + mSession);
             if (session != mSession) return;
             // TODO: separate thread for callback
             if (mListener != null) {
@@ -494,7 +494,7 @@ class SipServiceImpl extends ISipService.Stub {
 
         @Override
         public void onRegistrationDone(ISipSession session, int duration) {
-            Log.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
+            FLog.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
             if (session != mSession) return;
             // TODO: separate thread for callback
             if (mListener != null) {
@@ -522,7 +522,7 @@ class SipServiceImpl extends ISipService.Stub {
             } else {
                 mRegistered = false;
                 mExpiryTime = -1L;
-                Log.d(TAG, "Refresh registration immediately");
+                FLog.d(TAG, "Refresh registration immediately");
                 run();
             }
         }
@@ -530,7 +530,7 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRegistrationFailed(ISipSession session, String className,
                 String message) {
-            Log.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession
+            FLog.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession
                     + ": " + className + ": " + message);
             if (session != mSession) return;
             mRegistered = false;
@@ -547,7 +547,7 @@ class SipServiceImpl extends ISipService.Stub {
 
         @Override
         public void onRegistrationTimeout(ISipSession session) {
-            Log.d(TAG, "onRegistrationTimeout(): " + session + ": " + mSession);
+            FLog.d(TAG, "onRegistrationTimeout(): " + session + ": " + mSession);
             if (session != mSession) return;
             mRegistered = false;
             // TODO: separate thread for callback
@@ -577,10 +577,10 @@ class SipServiceImpl extends ISipService.Stub {
                     String type = netInfo.getTypeName();
                     NetworkInfo.State state = netInfo.getState();
                     if (state == NetworkInfo.State.CONNECTED) {
-                        Log.d(TAG, "Connectivity alert: CONNECTED " + type);
+                        FLog.d(TAG, "Connectivity alert: CONNECTED " + type);
                         onChanged(type, true);
                     } else if (state == NetworkInfo.State.DISCONNECTED) {
-                        Log.d(TAG, "Connectivity alert: DISCONNECTED " + type);
+                        FLog.d(TAG, "Connectivity alert: DISCONNECTED " + type);
                         onChanged(type, false);
                     } else {
                         Log.d(TAG, "Connectivity alert not processed: " + state
