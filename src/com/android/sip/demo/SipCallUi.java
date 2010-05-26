@@ -248,6 +248,7 @@ public class SipCallUi extends Activity implements OnClickListener {
                 setAllButtonsEnabled(false);
                 setText(mPeerBox, "...");
                 showToast("Call ended");
+                finish();
             }
 
             public void onError(SipAudioCall call, String errorMessage) {
