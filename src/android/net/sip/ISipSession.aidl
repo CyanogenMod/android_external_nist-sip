@@ -107,15 +107,6 @@ interface ISipSession {
     void unregister();
 
     /**
-     * Performs the keepalive activities required to make the connection alive
-     * especially in the NAT environment. The method is only valid to call when
-     * the session state is in {@link SipSessionState#READY_TO_CALL}.
-     *
-     * @see ISipSessionListener
-     */
-    void sendKeepAlive();
-
-    /**
      * Initiates a call to the specified profile. The session listener is called
      * back upon defined session events. The method is only valid to call when
      * the session state is in {@link SipSessionState#READY_TO_CALL}.

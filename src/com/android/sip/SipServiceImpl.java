@@ -75,6 +75,7 @@ class SipServiceImpl extends ISipService.Stub {
     private ConnectivityReceiver mConnectivityReceiver;
 
     public SipServiceImpl(Context context) {
+        Log.d(TAG, " service started!");
         mContext = context;
         mConnectivityReceiver = new ConnectivityReceiver();
         context.registerReceiver(mConnectivityReceiver,
@@ -323,11 +324,11 @@ class SipServiceImpl extends ISipService.Stub {
     }
 
     private class KeepAliveProcess implements Runnable {
-        private ISipSession mSession;
+        private SipSessionGroup.SipSessionImpl mSession;
         private WakeupTimer mTimer;
         private static final int DURATION = 15;
 
-        public KeepAliveProcess(ISipSession session) {
+        public KeepAliveProcess(SipSessionGroup.SipSessionImpl session) {
             mSession = session;
         }
 
@@ -349,7 +350,7 @@ class SipServiceImpl extends ISipService.Stub {
             Log.d(TAG, "  ~~~ keepalive");
             try {
                 mSession.sendKeepAlive();
-            } catch (android.os.RemoteException e) {
+            } catch (SipException e) {
                 Log.e(TAG, "Cannot send keepalive", e);
             }
             scheduleNextHeartbeat();
@@ -508,7 +509,7 @@ class SipServiceImpl extends ISipService.Stub {
                 scheduleNextRegistration(duration);
                 if (isBehindNAT(mLocalIp)) {
                     if (mKeepAliveProcess == null) {
-                        mKeepAliveProcess = new KeepAliveProcess(session);
+                        mKeepAliveProcess = new KeepAliveProcess(mSession);
                     }
                     mKeepAliveProcess.start();
                 }
