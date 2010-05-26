@@ -156,7 +156,13 @@ class SipServiceImpl extends ISipService.Stub {
 
     private SipSessionGroupExt createGroup(SipProfile localProfile)
             throws SipException {
-        return createGroup(localProfile, null, null);
+        String key = localProfile.getUriString();
+        SipSessionGroupExt group = mSipGroups.get(key);
+        if (group == null) {
+            group = new SipSessionGroupExt(localProfile, null, null);
+            mSipGroups.put(key, group);
+        }
+        return group;
     }
 
     private synchronized SipSessionGroupExt createGroup(SipProfile localProfile,
