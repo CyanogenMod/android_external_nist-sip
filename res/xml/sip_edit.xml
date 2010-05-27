@@ -82,4 +82,10 @@
         android:persistent="false"
         android:dialogTitle="@string/transport_title"/>
 
+    <CheckBoxPreference
+        android:key="@string/send_keepalive"
+        android:title="@string/send_keepalive_title"
+        android:defaultValue="false"
+        android:summary="@string/send_keepalive_summary"
+        android:dialogTitle="@string/send_keepalive_title"/>
 </PreferenceScreen>

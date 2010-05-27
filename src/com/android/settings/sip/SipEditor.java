@@ -67,7 +67,8 @@ public class SipEditor extends PreferenceActivity
         DisplayName(R.string.display_name, 4, EMPTY),
         ProxyAddress(R.string.proxy_address, 5, EMPTY),
         Port(R.string.port, 6, DEFAULT_SIP_PORT),
-        Transport(R.string.transport, 7, DEFAULT_PROTOCOL);
+        Transport(R.string.transport, 7, DEFAULT_PROTOCOL),
+        SendKeepAlive(R.string.send_keepalive, 8, EMPTY);
 
         /**
          * @param key The key name of the preference.
@@ -154,14 +155,15 @@ public class SipEditor extends PreferenceActivity
 
     private boolean validateAndSetResult() {
         for(Preference pref : mPreferences)  {
-            String value;
+            String value = EMPTY;
             if (pref instanceof ListPreference) {
                 value = ((ListPreference)pref).getValue();
-            } else {
+            } else if (pref instanceof EditTextPreference) {
                 value = ((EditTextPreference)pref).getText();
             }
             if (TextUtils.isEmpty(value) &&
-                    (pref != mPreferences[PreferenceKey.ProxyAddress.index])) {
+                    (pref != mPreferences[PreferenceKey.ProxyAddress.index]) &&
+                    (pref != mPreferences[PreferenceKey.SendKeepAlive.index])) {
                 showAlert(pref.getTitle() + " "
                         + getString(R.string.empty_alert));
                 return false;
@@ -190,6 +192,7 @@ public class SipEditor extends PreferenceActivity
                     .setProtocol(getValue(PreferenceKey.Transport))
                     .setDisplayName(getValue(PreferenceKey.DisplayName))
                     .setPort(Integer.parseInt(getValue(PreferenceKey.Port)))
+                    .setSendKeepAlive(isChecked(PreferenceKey.SendKeepAlive))
                     .build();
         } catch (Exception e) {
             Log.e(TAG, "Can not create new SipProfile : " + e.getMessage());
@@ -198,6 +201,7 @@ public class SipEditor extends PreferenceActivity
     }
 
     public boolean onPreferenceChange(Preference pref, Object newValue) {
+        if (pref instanceof CheckBoxPreference) return true;
         String value = (String) newValue;
         if (value == null) value = EMPTY;
         if (pref != mPreferences[PreferenceKey.Password.index]) {
@@ -219,6 +223,9 @@ public class SipEditor extends PreferenceActivity
                     if (key == PreferenceKey.Port) {
                         setValue(key,
                                 String.valueOf(meth.invoke(p, (Object[])null)));
+                    } else if (key == PreferenceKey.SendKeepAlive) {
+                        setCheckBox(key, ((Boolean)
+                                meth.invoke(p, (Object[])null)).booleanValue());
                     } else {
                         setValue(key, (String) meth.invoke(p, (Object[])null));
                     }
@@ -233,8 +240,10 @@ public class SipEditor extends PreferenceActivity
                 pref.setOnPreferenceChangeListener(this);
                 if (pref instanceof EditTextPreference) {
                     ((EditTextPreference)pref).setText(key.defaultValue);
-                } else {
+                } else if (pref instanceof ListPreference) {
                     ((ListPreference)pref).setValue(key.defaultValue);
+                } else {
+                    continue;
                 }
                 pref.setSummary(EMPTY.equals(key.defaultValue)
                         ? NOT_SET : key.defaultValue);
@@ -242,21 +251,34 @@ public class SipEditor extends PreferenceActivity
         }
     }
 
+    private boolean isChecked(PreferenceKey key) {
+        CheckBoxPreference pref = (CheckBoxPreference)mPreferences[key.index];
+        return pref.isChecked();
+    }
+
     private String getValue(PreferenceKey key) {
         Preference pref = mPreferences[key.index];
         if (pref instanceof EditTextPreference) {
             return ((EditTextPreference)pref).getText();
+        } else if (pref instanceof ListPreference) {
+            return ((ListPreference)pref).getValue();
         }
-        return ((ListPreference)pref).getValue();
+        throw new RuntimeException("getValue() for the preference " + key.text);
+    }
+
+    private void setCheckBox(PreferenceKey key, boolean checked) {
+        CheckBoxPreference pref = (CheckBoxPreference) mPreferences[key.index];
+        pref.setChecked(checked);
     }
 
     private void setValue(PreferenceKey key, String value) {
         Preference pref = mPreferences[key.index];
         if (pref instanceof EditTextPreference) {
             ((EditTextPreference)pref).setText(value);
-        } else {
+        } else if (pref instanceof ListPreference) {
             ((ListPreference)pref).setValue(value);
         }
+
         if (TextUtils.isEmpty(value)) {
             value = NOT_SET;
         } else {

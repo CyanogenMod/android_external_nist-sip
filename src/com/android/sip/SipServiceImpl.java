@@ -513,7 +513,8 @@ class SipServiceImpl extends ISipService.Stub {
                 duration -= MIN_EXPIRY_TIME;
                 if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
                 scheduleNextRegistration(duration);
-                if (isBehindNAT(mLocalIp)) {
+                if (isBehindNAT(mLocalIp) ||
+                        mSession.getLocalProfile().getSendKeepAlive() == true) {
                     if (mKeepAliveProcess == null) {
                         mKeepAliveProcess = new KeepAliveProcess(mSession);
                     }

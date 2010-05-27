@@ -46,6 +46,7 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
     private String mDomain;
     private String mProtocol = ListeningPoint.UDP;
     private String mProfileName;
+    private boolean mSendKeepAlive = false;
 
     /** @hide */
     public static final Parcelable.Creator<SipProfile> CREATOR =
@@ -201,6 +202,18 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
         }
 
         /**
+         * Sets the send keep-alive flag.
+         *
+         * @param flag true if sending keep-alive message is required,
+         *      false otherwise
+         * @return this builder object
+         */
+        public Builder setSendKeepAlive(boolean flag) {
+            mProfile.mSendKeepAlive = flag;
+            return this;
+        }
+
+        /**
          * Builds and returns the SIP profile object.
          *
          * @return the profile object created
@@ -235,6 +248,7 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
         mDomain = in.readString();
         mProtocol = in.readString();
         mProfileName = in.readString();
+        mSendKeepAlive = (in.readInt() == 0) ? false : true;
     }
 
     /** @hide */
@@ -245,6 +259,7 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
         out.writeString(mDomain);
         out.writeString(mProtocol);
         out.writeString(mProfileName);
+        out.writeInt(mSendKeepAlive ? 1 : 0);
     }
 
     /** @hide */
@@ -362,5 +377,14 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
      */
     public String getProfileName() {
         return mProfileName;
+    }
+
+    /**
+     * Gets the flag of 'Sending keep-alive'.
+     *
+     * @return the flag of sending SIP keep-alive messages.
+     */
+    public boolean getSendKeepAlive() {
+        return mSendKeepAlive;
     }
 }

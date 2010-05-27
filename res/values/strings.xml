@@ -46,6 +46,8 @@
     <string name="port_summary">5060</string>
     <string name="transport_title">Transport Type</string>
     <string name="transport_summary">TCP</string>
+    <string name="send_keepalive_title">Send keep-alive</string>
+    <string name="send_keepalive_summary">Send SIP keep-alive messages</string>
 
     <string name="sip_menu_register">Register the account</string>
     <string name="sip_menu_unregister">Unregister the account</string>
@@ -63,5 +65,5 @@
     <string name="proxy_address">ProxyAddress</string>
     <string name="port">Port</string>
     <string name="transport">Protocol</string>
-
+    <string name="send_keepalive">SendKeepAlive</string>
 </resources>
