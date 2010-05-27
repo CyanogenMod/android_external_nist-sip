@@ -177,7 +177,7 @@ class SipHelper {
     public void sendKeepAlive(SipProfile profile)
             throws SipException {
         try {
-            String proxy = profile.getOutboundProxy();
+            String proxy = profile.getProxyAddress();
             if (proxy == null) proxy = profile.getSipDomain();
             getListeningPoint().sendHeartbeat(proxy, profile.getPort());
         } catch (Exception e) {

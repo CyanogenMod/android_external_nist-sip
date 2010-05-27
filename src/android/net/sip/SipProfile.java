@@ -350,18 +350,6 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
     }
 
     /**
-     * Gets the server outbound proxy string as
-     * <server_address>:<port>/<protocol>.
-     *
-     * @return the server outbound proxy string
-     */
-    public String getOutboundProxy() {
-        if (TextUtils.isEmpty(mProxyAddress)) return mProxyAddress;
-        return mProxyAddress + ":" + getPort()
-                + "/" + mProtocol;
-    }
-
-    /**
      * Gets the network address of the server outbound proxy.
      *
      * @return the network address of the server outbound proxy

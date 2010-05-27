@@ -95,9 +95,10 @@ class SipSessionGroup implements SipListener {
         SipFactory sipFactory = SipFactory.getInstance();
         Properties properties = new Properties();
         properties.setProperty("javax.sip.STACK_NAME", getStackName());
-        String outboundProxy = myself.getOutboundProxy();
+        String outboundProxy = myself.getProxyAddress();
         if (!TextUtils.isEmpty(outboundProxy)) {
-            properties.setProperty("javax.sip.OUTBOUND_PROXY", outboundProxy);
+            properties.setProperty("javax.sip.OUTBOUND_PROXY", outboundProxy
+                    + ":" + myself.getPort() + "/" + myself.getProtocol());
         }
         SipStack stack = mSipStack = sipFactory.createSipStack(properties);
 
