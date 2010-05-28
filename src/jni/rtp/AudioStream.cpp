@@ -358,7 +358,7 @@ bool AudioStream::encode()
     // If we have a DTMF event to send, send it now.
     int32_t event = android_atomic_swap(-1, &mNextDtmfEvent);
     if (event != -1) {
-        mDtmfEvent = event << 25;
+        mDtmfEvent = event << 24;
         mDtmfDuration = 0;
     }
     if (mDtmfEvent != -1) {
