@@ -25,6 +25,7 @@ import android.content.IntentFilter;
 import android.os.SystemClock;
 import android.util.Log;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.PriorityQueue;
@@ -35,7 +36,7 @@ import java.util.PriorityQueue;
  */
 class WakeupTimer extends BroadcastReceiver {
     private static final String TAG = "__SIP.WakeupTimer__";
-    private static final String EVENT_ID = "EventID";
+    private static final String TRIGGER_TIME = "TriggerTime";
 
     private Context mContext;
     private AlarmManager mAlarmManager;
@@ -43,6 +44,8 @@ class WakeupTimer extends BroadcastReceiver {
     // runnable --> time to execute in SystemClock
     private PriorityQueue<MyEvent> mEventQueue =
             new PriorityQueue<MyEvent>(1, new MyEventComparator());
+
+    private PendingIntent mPendingIntent;
 
     public WakeupTimer(Context context) {
         mContext = context;
@@ -58,14 +61,15 @@ class WakeupTimer extends BroadcastReceiver {
      */
     public synchronized void stop() {
         mContext.unregisterReceiver(this);
-        for (MyEvent event : mEventQueue) {
-            mAlarmManager.cancel(event.mPendingIntent);
+        if (mPendingIntent != null) {
+            mAlarmManager.cancel(mPendingIntent);
+            mPendingIntent = null;
         }
         mEventQueue.clear();
         mEventQueue = null;
     }
 
-    private boolean stopped() {
+    private synchronized boolean stopped() {
         if (mEventQueue == null) {
             Log.w(TAG, "Timer stopped");
             return true;
@@ -74,46 +78,78 @@ class WakeupTimer extends BroadcastReceiver {
         }
     }
 
-    private MyEvent createMyEvent(long triggerTime, Runnable callback) {
-        MyEvent event = new MyEvent();
-        event.mTriggerTime = triggerTime;
-        event.mCallback = callback;
+    private void cancelAlarm() {
+        mAlarmManager.cancel(mPendingIntent);
+        mPendingIntent = null;
+    }
 
-        Intent intent = new Intent(getAction());
-        intent.putExtra(EVENT_ID, event.toString());
-        PendingIntent pendingIntent = event.mPendingIntent =
-                PendingIntent.getBroadcast(mContext, 0, intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT);
-        return event;
+    private void recalculatePeriods(long now) {
+        if (mEventQueue.isEmpty()) return;
+
+        int minPeriod = mEventQueue.peek().mPeriod;
+        for (MyEvent e : mEventQueue) {
+            int remainingTime = (int) (e.mTriggerTime - now);
+            remainingTime = remainingTime / minPeriod * minPeriod;
+            e.mTriggerTime = now + remainingTime;
+
+            e.mPeriod = e.mMaxPeriod / minPeriod * minPeriod;
+        }
+        PriorityQueue<MyEvent> newQueue = new PriorityQueue<MyEvent>(
+                mEventQueue.size(), mEventQueue.comparator());
+        newQueue.addAll((Collection<MyEvent>) mEventQueue);
+        mEventQueue.clear();
+        mEventQueue = newQueue;
+        Log.v(TAG, "queue re-calculated");
+        printQueue();
+    }
+
+    // Determines the period and the trigger time of the new event and insert it
+    // to the queue.
+    private void insertEvent(MyEvent event) {
+        long now = SystemClock.elapsedRealtime();
+        if (mEventQueue.isEmpty()) {
+            event.mTriggerTime = now + event.mPeriod;
+            mEventQueue.offer(event);
+            return;
+        }
+        MyEvent firstEvent = mEventQueue.peek();
+        int minPeriod = firstEvent.mPeriod;
+        if (minPeriod <= event.mMaxPeriod) {
+            int period = event.mPeriod
+                    = event.mMaxPeriod / minPeriod * minPeriod;
+            period -= (int) (firstEvent.mTriggerTime - now);
+            period = period / minPeriod * minPeriod;
+            event.mTriggerTime = firstEvent.mTriggerTime + period;
+            mEventQueue.offer(event);
+        } else {
+            event.mTriggerTime = now + event.mPeriod;
+            mEventQueue.offer(event);
+            recalculatePeriods(now);
+        }
     }
 
     /**
-     * Sets a timer event.
+     * Sets a periodic timer.
      *
-     * @param delay the delay from now when the timer goes off; in milli-second
-     * @param callback is called back when the timer goes off; the same
-     *      callback can be specified in multiple timer events
+     * @param period the timer period; in milli-second
+     * @param callback is called back when the timer goes off; the same callback
+     *      can be specified in multiple timer events
      */
-    public synchronized void set(long delay, Runnable callback) {
+    public synchronized void set(int period, Runnable callback) {
         if (stopped()) return;
 
-        long t = SystemClock.elapsedRealtime();
-        long triggerTime = t + delay;
-        MyEvent event = createMyEvent(triggerTime, callback);
+        long now = SystemClock.elapsedRealtime();
+        MyEvent event = new MyEvent(period, callback);
+        insertEvent(event);
 
-        MyEvent firstEvent = mEventQueue.peek();
-        if (!mEventQueue.offer(event)) {
-            throw new RuntimeException("failed to add event: " + callback);
-        }
         if (mEventQueue.peek() == event) {
-            if (firstEvent != null) {
-                mAlarmManager.cancel(firstEvent.mPendingIntent);
-            }
+            if (mEventQueue.size() > 1) cancelAlarm();
             scheduleNext();
         }
 
+        long triggerTime = now + period;
         Log.v(TAG, " add event " + event + " scheduled at "
-                + showTime(triggerTime) + " at " + showTime(t)
+                + showTime(triggerTime) + " at " + showTime(now)
                 + ", #events=" + mEventQueue.size());
         printQueue();
     }
@@ -124,42 +160,53 @@ class WakeupTimer extends BroadcastReceiver {
      * @param callback the callback
      */
     public synchronized void cancel(Runnable callback) {
-        if (stopped()) return;
+        if (stopped() || mEventQueue.isEmpty()) return;
+        Log.d(TAG, "cancel callback:" + callback);
 
         MyEvent firstEvent = mEventQueue.peek();
         for (Iterator<MyEvent> iter = mEventQueue.iterator();
                 iter.hasNext();) {
             MyEvent event = iter.next();
-            if (event.mCallback == callback) iter.remove();
+            if (event.mCallback == callback) {
+                iter.remove();
+                Log.d(TAG, "cancel " + event);
+            }
         }
-        if ((firstEvent != null) && (firstEvent.mCallback == callback)) {
-            mAlarmManager.cancel(firstEvent.mPendingIntent);
+        if (mEventQueue.peek() != firstEvent) {
+            cancelAlarm();
+            recalculatePeriods(firstEvent.mTriggerTime);
             scheduleNext();
         }
+        printQueue();
     }
 
     private void scheduleNext() {
         if (stopped() || mEventQueue.isEmpty()) return;
 
+        if (mPendingIntent != null) {
+            throw new RuntimeException("pendingIntent is not null!");
+        }
+
         MyEvent event = mEventQueue.peek();
+        Intent intent = new Intent(getAction());
+        intent.putExtra(TRIGGER_TIME, event.mTriggerTime);
+        PendingIntent pendingIntent = mPendingIntent =
+                PendingIntent.getBroadcast(mContext, 0, intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT);
         mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                event.mTriggerTime, event.mPendingIntent);
+                event.mTriggerTime, pendingIntent);
     }
 
     @Override
     public synchronized void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
-        if (getAction().equals(action)) {
-            MyEvent firstEvent = mEventQueue.peek();
-            String eventId = intent.getStringExtra(EVENT_ID);
-            if (firstEvent.toString().equals(eventId)) {
-                execute();
-            } else {
-                // log the unexpected event schedule
-                Log.d(TAG, "time's up for " + eventId
-                        + " but event q is:");
-                printQueue();
-            }
+        if (getAction().equals(action)
+                && intent.getExtras().containsKey(TRIGGER_TIME)) {
+            mPendingIntent = null;
+            long triggerTime = intent.getLongExtra(TRIGGER_TIME, -1L);
+            execute(triggerTime);
+        } else {
+            Log.d(TAG, "unrecognized intent: " + intent);
         }
     }
 
@@ -167,7 +214,7 @@ class WakeupTimer extends BroadcastReceiver {
         int count = 0;
         for (MyEvent event : mEventQueue) {
             Log.d(TAG, "     " + event + ": scheduled at "
-                    + showTime(event));
+                    + showTime(event.mTriggerTime));
             if (++count >= 5) break;
         }
         if (mEventQueue.size() > count) {
@@ -175,20 +222,28 @@ class WakeupTimer extends BroadcastReceiver {
         }
     }
 
-    private synchronized void execute() {
-        if (stopped()) return;
+    private void execute(long triggerTime) {
+        Log.d(TAG, "time's up, triggerTime = " + showTime(triggerTime) + ": "
+                + mEventQueue.size());
+        if (stopped() || mEventQueue.isEmpty()) return;
 
-        MyEvent firstEvent = mEventQueue.poll();
-        if (firstEvent != null) {
-            Log.d(TAG, "execute " + firstEvent + " at "
-                    + showTime(firstEvent));
+        while (true) {
+            if (mEventQueue.peek().mTriggerTime != triggerTime) break;
+            MyEvent event = mEventQueue.poll();
+            Log.d(TAG, "execute " + event);
+
+            // update trigger time and put it back before calling back as we
+            // need to make sure the event is in the queue if the callback calls
+            // cancel().
+            event.mTriggerTime += event.mPeriod;
+            mEventQueue.offer(event);
+
             // run the callback in a new thread to prevent deadlock
-            new Thread(firstEvent.mCallback).start();
-
-            // TODO: fire all the events that are already late
-            scheduleNext();
+            new Thread(event.mCallback).start();
         }
+        Log.d(TAG, "after timeout execution");
         printQueue();
+        scheduleNext();
     }
 
     private String getAction() {
@@ -196,15 +251,32 @@ class WakeupTimer extends BroadcastReceiver {
     }
 
     private static class MyEvent {
-        PendingIntent mPendingIntent;
+        int mPeriod;
+        int mMaxPeriod;
         long mTriggerTime;
         Runnable mCallback;
+
+        MyEvent(int period, Runnable callback) {
+            mPeriod = mMaxPeriod = period;
+            mCallback = callback;
+        }
+
+        @Override
+        public String toString() {
+            String s = super.toString();
+            s = s.substring(s.indexOf("@"));
+            return s + ":" + (mPeriod / 1000) + ":" + (mMaxPeriod / 1000);
+        }
     }
 
     private static class MyEventComparator implements Comparator<MyEvent> {
         public int compare(MyEvent e1, MyEvent e2) {
-            long diff = e1.mTriggerTime - e2.mTriggerTime;
-            return (diff > 0) ? 1 : ((diff == 0) ? 0 : -1);
+            int diff = (int) (e1.mTriggerTime - e2.mTriggerTime);
+            if (diff == 0) {
+                diff = e1.mPeriod - e2.mPeriod;
+                if (diff == 0) diff = e1.mMaxPeriod - e2.mMaxPeriod;
+            }
+            return diff;
         }
 
         public boolean equals(Object that) {
@@ -212,15 +284,11 @@ class WakeupTimer extends BroadcastReceiver {
         }
     }
 
-    private static long showTime() {
-        return showTime(SystemClock.elapsedRealtime());
-    }
-
-    private static long showTime(MyEvent event) {
-        return showTime(event.mTriggerTime);
-    }
-
-    private static long showTime(long time) {
-        return (time / 1000 % 10000);
+    private static String showTime(long time) {
+        int ms = (int) (time % 1000);
+        int s = (int) (time / 1000);
+        int m = s / 60;
+        s %= 60;
+        return String.format("%d.%d.%d", m, s, ms);
     }
 }

@@ -16,6 +16,7 @@
 
 package com.android.sip;
 
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.io.File;
@@ -42,20 +43,35 @@ class FLog {
         }
     }
 
-    static void write(String type, String tag, String msg) {
+    private static String getDate() {
+        String[] ss = new Date().toString().split(" ");
+        return ss[1] + " " + ss[2] + " " + ss[3];
+    }
+
+    private static String getTime() {
+        long now = SystemClock.elapsedRealtime();
+        int ms = (int) (now % 1000);
+        int s = (int) (now / 1000);
+        int m = s / 60;
+        s %= 60;
+        return String.format("%d.%d.%d", m, s, ms);
+    }
+
+    static synchronized void write(String type, String tag, String msg) {
         try {
-            writer.println(String.format("%s %s| %s| %s", type,
-                    new Date().toString(), tag, msg));
+            writer.println(String.format("%s %s %s| %s| %s", type,
+                    getDate(), getTime(), tag, msg));
             writer.flush();
         } catch (Throwable t) {
             Log.e("FLOG", type, t);
         }
     }
 
-    static void write(String type, String tag, String msg, Throwable t) {
+    static synchronized void write(String type, String tag, String msg,
+            Throwable t) {
         try {
             writer.println(String.format("%s %s| %s| %s", type,
-                    new Date().toString(), tag, msg));
+                    getDate(), getTime(), tag, msg));
             t.printStackTrace(writer);
             writer.flush();
         } catch (Throwable tt) {
@@ -65,6 +81,7 @@ class FLog {
 
     static void v(String tag, String msg) {
         Log.v(tag, msg);
+        write("v", tag, msg);
     }
 
     static void d(String tag, String msg) {

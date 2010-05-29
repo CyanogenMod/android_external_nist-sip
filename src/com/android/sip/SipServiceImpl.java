@@ -55,6 +55,7 @@ class SipServiceImpl extends ISipService.Stub {
     private String mLocalIp;
     private String mNetworkType;
     private boolean mConnected;
+    private WakeupTimer mTimer;
 
     // SipProfile URI --> group
     private Map<String, SipSessionGroupExt> mSipGroups =
@@ -73,6 +74,7 @@ class SipServiceImpl extends ISipService.Stub {
         context.registerReceiver(mConnectivityReceiver,
                 new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
 
+        mTimer = new WakeupTimer(context);
     }
 
     public synchronized void openToReceiveCalls(SipProfile localProfile,
@@ -316,22 +318,14 @@ class SipServiceImpl extends ISipService.Stub {
 
     private class KeepAliveProcess implements Runnable {
         private SipSessionGroup.SipSessionImpl mSession;
-        private WakeupTimer mTimer;
         private static final int DURATION = 15;
 
         public KeepAliveProcess(SipSessionGroup.SipSessionImpl session) {
             mSession = session;
         }
 
-        private synchronized void scheduleNextHeartbeat() {
-            if (mTimer == null) mTimer = new WakeupTimer(mContext);
-            Log.d(TAG, "Send SIP keepalive request " + DURATION + "s later.");
-            mTimer.cancel(this);
-            mTimer.set(DURATION * 1000L, this);
-        }
-
         public void start() {
-            scheduleNextHeartbeat();
+            mTimer.set(DURATION * 1000, this);
         }
 
         public void run() {
@@ -341,14 +335,10 @@ class SipServiceImpl extends ISipService.Stub {
             } catch (SipException e) {
                 Log.e(TAG, "Cannot send keepalive", e);
             }
-            scheduleNextHeartbeat();
         }
 
         public synchronized void stop() {
-            if (mTimer != null) {
-                mTimer.stop();
-                mTimer = null;
-            }
+            mTimer.cancel(this);
         }
     }
 
@@ -357,7 +347,6 @@ class SipServiceImpl extends ISipService.Stub {
         private SipSessionGroup.SipSessionImpl mSession;
         private ISipSessionListener mListener;
         private KeepAliveProcess mKeepAliveProcess;
-        private WakeupTimer mTimer;
         private int mBackoff = 1;
         private boolean mRegistered;
         private long mExpiryTime;
@@ -383,10 +372,7 @@ class SipServiceImpl extends ISipService.Stub {
         public synchronized void stop() {
             if (mSession == null) return;
             if (mConnected) mSession.unregister();
-            if (mTimer != null) {
-                mTimer.stop();
-                mTimer = null;
-            }
+            mTimer.cancel(this);
             if (mKeepAliveProcess != null) {
                 mKeepAliveProcess.stop();
                 mKeepAliveProcess = null;
@@ -440,11 +426,10 @@ class SipServiceImpl extends ISipService.Stub {
             return false;
         }
 
-        private synchronized void scheduleNextRegistration(int duration) {
-            if (mTimer == null) mTimer = new WakeupTimer(mContext);
+        private synchronized void restart(int duration) {
             FLog.d(TAG, "Refresh registration " + duration + "s later.");
             mTimer.cancel(this);
-            mTimer.set(duration * 1000L, this);
+            mTimer.set(duration * 1000, this);
         }
 
         private int backoffDuration() {
@@ -485,19 +470,22 @@ class SipServiceImpl extends ISipService.Stub {
             }
 
             if (duration > 0) {
-                mRegistered = true;
                 mExpiryTime = System.currentTimeMillis() + (duration * 1000);
 
-                // allow some overlap to avoid missing calls during renew
-                duration -= MIN_EXPIRY_TIME;
-                if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
-                scheduleNextRegistration(duration);
-                if (isBehindNAT(mLocalIp) ||
-                        mSession.getLocalProfile().getSendKeepAlive() == true) {
-                    if (mKeepAliveProcess == null) {
-                        mKeepAliveProcess = new KeepAliveProcess(mSession);
+                if (!mRegistered) {
+                    mRegistered = true;
+                    // allow some overlap to avoid missing calls during renew
+                    duration -= MIN_EXPIRY_TIME;
+                    if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
+                    restart(duration);
+
+                    if (isBehindNAT(mLocalIp) ||
+                            mSession.getLocalProfile().getSendKeepAlive() == true) {
+                        if (mKeepAliveProcess == null) {
+                            mKeepAliveProcess = new KeepAliveProcess(mSession);
+                        }
+                        mKeepAliveProcess.start();
                     }
-                    mKeepAliveProcess.start();
                 }
             } else {
                 mRegistered = false;
@@ -522,7 +510,7 @@ class SipServiceImpl extends ISipService.Stub {
                     Log.w(TAG, "onRegistrationFailed(): " + t);
                 }
             }
-            scheduleNextRegistration(backoffDuration());
+            restart(backoffDuration());
         }
 
         @Override
@@ -538,7 +526,7 @@ class SipServiceImpl extends ISipService.Stub {
                     Log.w(TAG, "onRegistrationTimeout(): " + t);
                 }
             }
-            scheduleNextRegistration(backoffDuration());
+            restart(backoffDuration());
         }
     }
 
