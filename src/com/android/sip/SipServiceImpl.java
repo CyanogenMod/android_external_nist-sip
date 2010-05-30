@@ -345,7 +345,7 @@ class SipServiceImpl extends ISipService.Stub {
     private class AutoRegistrationProcess extends SipSessionAdapter
             implements Runnable {
         private SipSessionGroup.SipSessionImpl mSession;
-        private ISipSessionListener mListener;
+        private SipSessionListenerProxy mProxy = new SipSessionListenerProxy();
         private KeepAliveProcess mKeepAliveProcess;
         private int mBackoff = 1;
         private boolean mRegistered;
@@ -383,18 +383,17 @@ class SipServiceImpl extends ISipService.Stub {
 
         public void setListener(ISipSessionListener listener) {
             Log.v(TAG, "setListener(): " + listener);
-            mListener = listener;
+            mProxy.setListener(listener);
             if (mSession == null) return;
 
-            // TODO: separate thread for callback
             try {
                 if ((mSession != null) && SipSessionState.REGISTERING.equals(
                         mSession.getState())) {
-                    mListener.onRegistering(mSession);
+                    mProxy.onRegistering(mSession);
                 } else if (mRegistered) {
                     int duration = (int)
                             (mExpiryTime - System.currentTimeMillis());
-                    mListener.onRegistrationDone(mSession, duration);
+                    mProxy.onRegistrationDone(mSession, duration);
                 }
             } catch (Throwable t) {
                 Log.w(TAG, "setListener(): " + t);
@@ -446,13 +445,10 @@ class SipServiceImpl extends ISipService.Stub {
         public void onRegistering(ISipSession session) {
             FLog.d(TAG, "onRegistering(): " + session + ": " + mSession);
             if (session != mSession) return;
-            // TODO: separate thread for callback
-            if (mListener != null) {
-                try {
-                    mListener.onRegistering(session);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistering()", t);
-                }
+            try {
+                mProxy.onRegistering(session);
+            } catch (Throwable t) {
+                Log.w(TAG, "onRegistering()", t);
             }
         }
 
@@ -460,13 +456,10 @@ class SipServiceImpl extends ISipService.Stub {
         public void onRegistrationDone(ISipSession session, int duration) {
             FLog.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
             if (session != mSession) return;
-            // TODO: separate thread for callback
-            if (mListener != null) {
-                try {
-                    mListener.onRegistrationDone(session, duration);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationDone()", t);
-                }
+            try {
+                mProxy.onRegistrationDone(session, duration);
+            } catch (Throwable t) {
+                Log.w(TAG, "onRegistrationDone()", t);
             }
 
             if (duration > 0) {
@@ -502,13 +495,10 @@ class SipServiceImpl extends ISipService.Stub {
                     + ": " + className + ": " + message);
             if (session != mSession) return;
             mRegistered = false;
-            // TODO: separate thread for callback
-            if (mListener != null) {
-                try {
-                    mListener.onRegistrationFailed(session, className, message);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationFailed(): " + t);
-                }
+            try {
+                mProxy.onRegistrationFailed(session, className, message);
+            } catch (Throwable t) {
+                Log.w(TAG, "onRegistrationFailed(): " + t);
             }
             restart(backoffDuration());
         }
@@ -518,13 +508,10 @@ class SipServiceImpl extends ISipService.Stub {
             FLog.d(TAG, "onRegistrationTimeout(): " + session + ": " + mSession);
             if (session != mSession) return;
             mRegistered = false;
-            // TODO: separate thread for callback
-            if (mListener != null) {
-                try {
-                    mListener.onRegistrationTimeout(session);
-                } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationTimeout(): " + t);
-                }
+            try {
+                mProxy.onRegistrationTimeout(session);
+            } catch (Throwable t) {
+                Log.w(TAG, "onRegistrationTimeout(): " + t);
             }
             restart(backoffDuration());
         }

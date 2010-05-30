@@ -36,13 +36,14 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
     }
 
     private void proxy(Runnable runnable) {
-        // one thread for each callback for now
-        // TODO: Guarantee ordering if the issue becomes important. Currently,
+        // One thread for each calling back.
+        // Note: Guarantee ordering if the issue becomes important. Currently,
         // the chance of handling two callback events at a time is none.
         new Thread(runnable).start();
     }
 
     public void onCalling(final ISipSession session) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -56,6 +57,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
 
     public void onRinging(final ISipSession session, final SipProfile caller,
             final byte[] sessionDescription) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -68,6 +70,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
     }
 
     public void onRingingBack(final ISipSession session) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -81,6 +84,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
 
     public void onCallEstablished(final ISipSession session,
             final byte[] sessionDescription) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -93,6 +97,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
     }
 
     public void onCallEnded(final ISipSession session) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -105,6 +110,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
     }
 
     public void onCallBusy(final ISipSession session) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -118,6 +124,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
 
     public void onCallChangeFailed(final ISipSession session,
             final String className, final String message) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -131,6 +138,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
 
     public void onError(final ISipSession session, final String className,
             final String message) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -143,6 +151,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
     }
 
     public void onRegistering(final ISipSession session) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -156,6 +165,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
 
     public void onRegistrationDone(final ISipSession session,
             final int duration) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -169,6 +179,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
 
     public void onRegistrationFailed(final ISipSession session,
             final String className, final String message) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
@@ -181,6 +192,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
     }
 
     public void onRegistrationTimeout(final ISipSession session) {
+        if (mListener == null) return;
         proxy(new Runnable() {
             public void run() {
                 try {
