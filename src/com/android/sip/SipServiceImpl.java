@@ -29,6 +29,7 @@ import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipSessionAdapter;
 import android.net.sip.SipSessionState;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
@@ -56,6 +57,7 @@ class SipServiceImpl extends ISipService.Stub {
     private String mNetworkType;
     private boolean mConnected;
     private WakeupTimer mTimer;
+    private WifiManager.WifiLock mWifiLock;
 
     // SipProfile URI --> group
     private Map<String, SipSessionGroupExt> mSipGroups =
@@ -175,7 +177,28 @@ class SipServiceImpl extends ISipService.Stub {
                 + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
                 + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
 
-        if (!type.equals(mNetworkType) && (!connected)) return;
+        boolean sameType = type.equals(mNetworkType);
+        if (!sameType && !connected) return;
+
+        boolean wasWifi = "WIFI".equalsIgnoreCase(mNetworkType);
+        boolean isWifi = "WIFI".equalsIgnoreCase(type);
+        boolean wifiOff = (isWifi && !connected) || (wasWifi && !sameType);
+        boolean wifiOn = isWifi && connected;
+        if (wifiOff) {
+            if (mWifiLock != null) {
+                FLog.d(TAG, "release wifi lock");
+                mWifiLock.release();
+                mWifiLock = null;
+            }
+        } else if (wifiOn) {
+            if (mWifiLock == null) {
+                FLog.d(TAG, "acquire wifi lock");
+                mWifiLock = ((WifiManager)
+                        mContext.getSystemService(Context.WIFI_SERVICE))
+                        .createWifiLock(WifiManager.WIFI_MODE_FULL, TAG);
+                mWifiLock.acquire();
+            }
+        }
 
         try {
             boolean wasConnected = mConnected;
@@ -194,6 +217,7 @@ class SipServiceImpl extends ISipService.Stub {
                     group.onConnectivityChanged(true);
                 }
             }
+
         } catch (SipException e) {
             FLog.e(TAG, "onConnectivityChanged()", e);
         }
