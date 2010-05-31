@@ -175,11 +175,7 @@ class SipServiceImpl extends ISipService.Stub {
                 + mNetworkType + (mConnected? " CONNECTED" : " DISCONNECTED")
                 + " --> " + type + (connected? " CONNECTED" : " DISCONNECTED"));
 
-        if (type.equals(mNetworkType)) {
-            if (mConnected == connected) return;
-        } else {
-            if (!connected) return;
-        }
+        if (!type.equals(mNetworkType) && (!connected)) return;
 
         try {
             boolean wasConnected = mConnected;
