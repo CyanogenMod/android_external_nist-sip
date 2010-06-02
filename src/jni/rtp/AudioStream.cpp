@@ -25,8 +25,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <arpa/inet.h>
-
-#include <cutils/atomic.h>
+#include <pthread.h>
 
 #define LOG_TAG "AudioStream"
 #include <utils/Log.h>
@@ -120,6 +119,7 @@ private:
     AudioCodec *mCodec;
     AudioRecord mRecord;
     AudioTrack mTrack;
+    pthread_mutex_t mDtmfLock;
 
     uint16_t mLocalSequence;
     uint32_t mLocalTimestamp;
@@ -188,6 +188,7 @@ AudioStream::AudioStream()
     mReceiver = new Receiver(this);
     mCodec = NULL;
     mJitterBuffer = NULL;
+    mDtmfLock = PTHREAD_MUTEX_INITIALIZER;
 }
 
 AudioStream::~AudioStream()
@@ -296,10 +297,12 @@ bool AudioStream::sendDtmf(int event)
     if (mRecord.stopped() || ~mDtmfMagic == 0) {
         return false;
     }
-    if (android_atomic_cmpxchg(-1, event, &mNextDtmfEvent)) {
+    if (pthread_mutex_trylock(&mDtmfLock) != 0) {
         usleep(mInterval * 2);
-        return !android_atomic_cmpxchg(-1, event, &mNextDtmfEvent);
+        if (pthread_mutex_trylock(&mDtmfLock) != 0) return false;
     }
+    mNextDtmfEvent = event;
+    pthread_mutex_unlock(&mDtmfLock);
     return true;
 }
 
@@ -356,7 +359,10 @@ bool AudioStream::encode()
     mLocalTimestamp += mSampleCount;
 
     // If we have a DTMF event to send, send it now.
-    int32_t event = android_atomic_swap(-1, &mNextDtmfEvent);
+    pthread_mutex_lock(&mDtmfLock);
+    int32_t event = mNextDtmfEvent;
+    mNextDtmfEvent = -1;
+    pthread_mutex_unlock(&mDtmfLock);
     if (event != -1) {
         mDtmfEvent = event << 24;
         mDtmfDuration = 0;
