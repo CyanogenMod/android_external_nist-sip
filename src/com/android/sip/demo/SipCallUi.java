@@ -73,6 +73,7 @@ public class SipCallUi extends Activity implements OnClickListener {
 
     private long mCallTime;
     private String mCallee;
+    private String mCaller;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -271,20 +272,29 @@ public class SipCallUi extends Activity implements OnClickListener {
         try {
             mAudioCall.endCall();
             mSpeakerMode = false;
-            if (mCallee != null) addCallLog();
+            if (mCallee != null) addOutgoingCallLog(mCallee);
+            if (mCaller != null) addIncomingCallLog(mCaller);
         } catch (SipException e) {
             Log.e(TAG, "endCall()", e);
             setCallStatus(e);
         }
     }
 
-    private void addCallLog() {
+    private void addOutgoingCallLog(String callee) {
+        addCallLog(Calls.OUTGOING_TYPE, callee);
+    }
+
+    private void addIncomingCallLog(String caller) {
+        addCallLog(Calls.INCOMING_TYPE, caller);
+    }
+
+    private void addCallLog(int callType, String address) {
         long insertDate = new Date().getTime();
         ContentValues value = new ContentValues();
-        value.put(Calls.NUMBER, mCallee.substring(0, mCallee.indexOf('@')));
+        value.put(Calls.NUMBER, address.substring(0, address.indexOf('@')));
         value.put(Calls.DATE, insertDate);
         value.put(Calls.DURATION, (insertDate - mCallTime)/1000);
-        value.put(Calls.TYPE, Calls.OUTGOING_TYPE);
+        value.put(Calls.TYPE, callType);
         value.put(Calls.NEW, 0);
         try {
             getContentResolver().acquireProvider(

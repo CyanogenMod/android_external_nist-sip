@@ -188,7 +188,7 @@ AudioStream::AudioStream()
     mReceiver = new Receiver(this);
     mCodec = NULL;
     mJitterBuffer = NULL;
-    mDtmfLock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init(&mDtmfLock, NULL);
 }
 
 AudioStream::~AudioStream()
