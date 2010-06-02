@@ -28,7 +28,7 @@ import android.util.Log;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.PriorityQueue;
+import java.util.TreeSet;
 
 /**
  * Timer that can schedule events to occur even when the device is in sleep.
@@ -42,8 +42,8 @@ class WakeupTimer extends BroadcastReceiver {
     private AlarmManager mAlarmManager;
 
     // runnable --> time to execute in SystemClock
-    private PriorityQueue<MyEvent> mEventQueue =
-            new PriorityQueue<MyEvent>(1, new MyEventComparator());
+    private TreeSet<MyEvent> mEventQueue =
+            new TreeSet<MyEvent>(new MyEventComparator());
 
     private PendingIntent mPendingIntent;
 
@@ -86,7 +86,7 @@ class WakeupTimer extends BroadcastReceiver {
     private void recalculatePeriods(long now) {
         if (mEventQueue.isEmpty()) return;
 
-        int minPeriod = mEventQueue.peek().mPeriod;
+        int minPeriod = mEventQueue.first().mMaxPeriod;
         for (MyEvent e : mEventQueue) {
             int remainingTime = (int) (e.mTriggerTime - now);
             remainingTime = remainingTime / minPeriod * minPeriod;
@@ -94,8 +94,8 @@ class WakeupTimer extends BroadcastReceiver {
 
             e.mPeriod = e.mMaxPeriod / minPeriod * minPeriod;
         }
-        PriorityQueue<MyEvent> newQueue = new PriorityQueue<MyEvent>(
-                mEventQueue.size(), mEventQueue.comparator());
+        TreeSet<MyEvent> newQueue = new TreeSet<MyEvent>(
+                mEventQueue.comparator());
         newQueue.addAll((Collection<MyEvent>) mEventQueue);
         mEventQueue.clear();
         mEventQueue = newQueue;
@@ -109,10 +109,10 @@ class WakeupTimer extends BroadcastReceiver {
         long now = SystemClock.elapsedRealtime();
         if (mEventQueue.isEmpty()) {
             event.mTriggerTime = now + event.mPeriod;
-            mEventQueue.offer(event);
+            mEventQueue.add(event);
             return;
         }
-        MyEvent firstEvent = mEventQueue.peek();
+        MyEvent firstEvent = mEventQueue.first();
         int minPeriod = firstEvent.mPeriod;
         if (minPeriod <= event.mMaxPeriod) {
             int period = event.mPeriod
@@ -120,11 +120,15 @@ class WakeupTimer extends BroadcastReceiver {
             period -= (int) (firstEvent.mTriggerTime - now);
             period = period / minPeriod * minPeriod;
             event.mTriggerTime = firstEvent.mTriggerTime + period;
-            mEventQueue.offer(event);
+            mEventQueue.add(event);
         } else {
-            event.mTriggerTime = now + event.mPeriod;
-            mEventQueue.offer(event);
-            recalculatePeriods(now);
+            long triggerTime = now + event.mPeriod;
+            if (firstEvent.mTriggerTime < triggerTime) {
+                triggerTime = firstEvent.mTriggerTime;
+            }
+            event.mTriggerTime = triggerTime;
+            mEventQueue.add(event);
+            recalculatePeriods(triggerTime);
         }
     }
 
@@ -142,12 +146,12 @@ class WakeupTimer extends BroadcastReceiver {
         MyEvent event = new MyEvent(period, callback);
         insertEvent(event);
 
-        if (mEventQueue.peek() == event) {
+        if (mEventQueue.first() == event) {
             if (mEventQueue.size() > 1) cancelAlarm();
             scheduleNext();
         }
 
-        long triggerTime = now + period;
+        long triggerTime = event.mTriggerTime;
         Log.v(TAG, " add event " + event + " scheduled at "
                 + showTime(triggerTime) + " at " + showTime(now)
                 + ", #events=" + mEventQueue.size());
@@ -163,16 +167,16 @@ class WakeupTimer extends BroadcastReceiver {
         if (stopped() || mEventQueue.isEmpty()) return;
         Log.d(TAG, "cancel callback:" + callback);
 
-        MyEvent firstEvent = mEventQueue.peek();
+        MyEvent firstEvent = mEventQueue.first();
         for (Iterator<MyEvent> iter = mEventQueue.iterator();
                 iter.hasNext();) {
             MyEvent event = iter.next();
             if (event.mCallback == callback) {
                 iter.remove();
-                Log.d(TAG, "cancel " + event);
+                Log.d(TAG, "cancel event:" + event);
             }
         }
-        if (mEventQueue.peek() != firstEvent) {
+        if (mEventQueue.first() != firstEvent) {
             cancelAlarm();
             recalculatePeriods(firstEvent.mTriggerTime);
             scheduleNext();
@@ -187,7 +191,7 @@ class WakeupTimer extends BroadcastReceiver {
             throw new RuntimeException("pendingIntent is not null!");
         }
 
-        MyEvent event = mEventQueue.peek();
+        MyEvent event = mEventQueue.first();
         Intent intent = new Intent(getAction());
         intent.putExtra(TRIGGER_TIME, event.mTriggerTime);
         PendingIntent pendingIntent = mPendingIntent =
@@ -228,15 +232,16 @@ class WakeupTimer extends BroadcastReceiver {
         if (stopped() || mEventQueue.isEmpty()) return;
 
         while (true) {
-            if (mEventQueue.peek().mTriggerTime != triggerTime) break;
-            MyEvent event = mEventQueue.poll();
+            MyEvent event = mEventQueue.first();
+            if (event.mTriggerTime != triggerTime) break;
+            mEventQueue.remove(event);
             Log.d(TAG, "execute " + event);
 
             // update trigger time and put it back before calling back as we
             // need to make sure the event is in the queue if the callback calls
             // cancel().
             event.mTriggerTime += event.mPeriod;
-            mEventQueue.offer(event);
+            mEventQueue.add(event);
 
             // run the callback in a new thread to prevent deadlock
             new Thread(event.mCallback).start();
@@ -271,11 +276,9 @@ class WakeupTimer extends BroadcastReceiver {
 
     private static class MyEventComparator implements Comparator<MyEvent> {
         public int compare(MyEvent e1, MyEvent e2) {
-            int diff = (int) (e1.mTriggerTime - e2.mTriggerTime);
-            if (diff == 0) {
-                diff = e1.mPeriod - e2.mPeriod;
-                if (diff == 0) diff = e1.mMaxPeriod - e2.mMaxPeriod;
-            }
+            if (e1 == e2) return 0;
+            int diff = e1.mMaxPeriod - e2.mMaxPeriod;
+            if (diff == 0) diff = -1;
             return diff;
         }
 
