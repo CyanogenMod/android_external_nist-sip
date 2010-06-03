@@ -71,7 +71,7 @@ public class SipCallUi extends Activity implements OnClickListener {
     private Throwable mError;
     private boolean mSpeakerMode;
 
-    private long mCallTime;
+    private long mCallTime = 0;
     private String mCallee;
     private String mCaller;
 
@@ -144,7 +144,6 @@ public class SipCallUi extends Activity implements OnClickListener {
             SipProfile caller = (SipProfile)
                     intent.getParcelableExtra("caller");
             mCallee = intent.getStringExtra("callee");
-            mCallTime = 0;
             Log.v(TAG, "call from " + caller + " to " + mCallee);
             try {
                 makeAudioCall(caller, mCallee);
@@ -220,6 +219,7 @@ public class SipCallUi extends Activity implements OnClickListener {
             public void onRinging(SipAudioCall call, SipProfile caller) {
                 Log.v(TAG, "onRinging(): " + call + " <--> " + mAudioCall);
                 if (mAudioCall != null) return;
+                mCaller = caller.getUserName() + '@' + caller.getSipDomain();
                 showCallNotificationDialog(caller);
                 setCallStatus();
             }
@@ -246,6 +246,7 @@ public class SipCallUi extends Activity implements OnClickListener {
                 }
                 setCallStatus();
                 mAudioCall = null;
+                addCallLog();
                 setAllButtonsEnabled(false);
                 setText(mPeerBox, "...");
                 showToast("Call ended");
@@ -272,28 +273,36 @@ public class SipCallUi extends Activity implements OnClickListener {
         try {
             mAudioCall.endCall();
             mSpeakerMode = false;
-            if (mCallee != null) addOutgoingCallLog(mCallee);
-            if (mCaller != null) addIncomingCallLog(mCaller);
+            addCallLog();
         } catch (SipException e) {
             Log.e(TAG, "endCall()", e);
             setCallStatus(e);
         }
     }
 
+    private void addCallLog() {
+        if (mCallee != null) addOutgoingCallLog(mCallee);
+        if (mCaller != null) addIncomingCallLog(mCaller);
+        mCaller = mCallee = null;
+        mCallTime = 0;
+    }
+
     private void addOutgoingCallLog(String callee) {
-        addCallLog(Calls.OUTGOING_TYPE, callee);
+        addCallRecord(Calls.OUTGOING_TYPE, callee);
     }
 
     private void addIncomingCallLog(String caller) {
-        addCallLog(Calls.INCOMING_TYPE, caller);
+        addCallRecord((mCallTime != 0) ? Calls.INCOMING_TYPE:
+                Calls.MISSED_TYPE, caller);
     }
 
-    private void addCallLog(int callType, String address) {
+    private void addCallRecord(int callType, String address) {
         long insertDate = new Date().getTime();
         ContentValues value = new ContentValues();
         value.put(Calls.NUMBER, address.substring(0, address.indexOf('@')));
         value.put(Calls.DATE, insertDate);
-        value.put(Calls.DURATION, (insertDate - mCallTime)/1000);
+        value.put(Calls.DURATION,
+                (mCallTime != 0) ? (insertDate - mCallTime)/1000 : 0);
         value.put(Calls.TYPE, callType);
         value.put(Calls.NEW, 0);
         try {
