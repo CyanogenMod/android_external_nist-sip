@@ -401,6 +401,10 @@ class SipServiceImpl extends ISipService.Stub {
             mRegistered = false;
         }
 
+        private boolean isStopped() {
+            return (mSession == null);
+        }
+
         public void setListener(ISipSessionListener listener) {
             Log.v(TAG, "setListener(): " + listener);
             mProxy.setListener(listener);
@@ -445,7 +449,7 @@ class SipServiceImpl extends ISipService.Stub {
             return false;
         }
 
-        private synchronized void restart(int duration) {
+        private void restart(int duration) {
             FLog.d(TAG, "Refresh registration " + duration + "s later.");
             mTimer.cancel(this);
             mTimer.set(duration * 1000, this);
@@ -473,7 +477,8 @@ class SipServiceImpl extends ISipService.Stub {
         }
 
         @Override
-        public void onRegistrationDone(ISipSession session, int duration) {
+        public synchronized void onRegistrationDone(
+                ISipSession session, int duration) {
             FLog.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
             if (session != mSession) return;
             try {
@@ -509,31 +514,39 @@ class SipServiceImpl extends ISipService.Stub {
         }
 
         @Override
-        public void onRegistrationFailed(ISipSession session, String className,
-                String message) {
+        public synchronized void onRegistrationFailed(ISipSession session,
+                String className, String message) {
             FLog.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession
                     + ": " + className + ": " + message);
             if (session != mSession) return;
-            mRegistered = false;
+            onError();
             try {
                 mProxy.onRegistrationFailed(session, className, message);
             } catch (Throwable t) {
                 Log.w(TAG, "onRegistrationFailed(): " + t);
             }
-            restart(backoffDuration());
         }
 
         @Override
-        public void onRegistrationTimeout(ISipSession session) {
+        public synchronized void onRegistrationTimeout(ISipSession session) {
             FLog.d(TAG, "onRegistrationTimeout(): " + session + ": " + mSession);
             if (session != mSession) return;
             mRegistered = false;
+            onError();
             try {
                 mProxy.onRegistrationTimeout(session);
             } catch (Throwable t) {
                 Log.w(TAG, "onRegistrationTimeout(): " + t);
             }
+        }
+
+        private void onError() {
+            mRegistered = false;
             restart(backoffDuration());
+            if (mKeepAliveProcess != null) {
+                mKeepAliveProcess.stop();
+                mKeepAliveProcess = null;
+            }
         }
     }
 
