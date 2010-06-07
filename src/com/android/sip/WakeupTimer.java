@@ -231,17 +231,11 @@ class WakeupTimer extends BroadcastReceiver {
                 + mEventQueue.size());
         if (stopped() || mEventQueue.isEmpty()) return;
 
-        while (true) {
-            MyEvent event = mEventQueue.first();
+        for (MyEvent event : mEventQueue) {
             if (event.mTriggerTime != triggerTime) break;
-            mEventQueue.remove(event);
             Log.d(TAG, "execute " + event);
 
-            // update trigger time and put it back before calling back as we
-            // need to make sure the event is in the queue if the callback calls
-            // cancel().
             event.mTriggerTime += event.mPeriod;
-            mEventQueue.add(event);
 
             // run the callback in a new thread to prevent deadlock
             new Thread(event.mCallback).start();
