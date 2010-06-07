@@ -176,7 +176,7 @@ class WakeupTimer extends BroadcastReceiver {
                 Log.d(TAG, "cancel event:" + event);
             }
         }
-        if (mEventQueue.first() != firstEvent) {
+        if (mEventQueue.isEmpty() || (mEventQueue.first() != firstEvent)) {
             cancelAlarm();
             recalculatePeriods(firstEvent.mTriggerTime);
             scheduleNext();
