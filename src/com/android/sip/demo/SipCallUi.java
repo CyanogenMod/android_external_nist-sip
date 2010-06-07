@@ -52,7 +52,8 @@ import javax.sip.SipException;
 
 /**
  */
-public class SipCallUi extends Activity implements OnClickListener {
+public class SipCallUi extends Activity implements OnClickListener,
+        SipAudioCall.Listener {
     private static final String TAG = SipCallUi.class.getSimpleName();
 
     private TextView mPeerBox;
@@ -159,8 +160,7 @@ public class SipCallUi extends Activity implements OnClickListener {
         // TODO: what happens if another call is going
         try {
             Log.v(TAG, "create SipAudioCall");
-            mAudioCall = mSipManager.takeAudioCall(this, intent,
-                    createListener());
+            mAudioCall = mSipManager.takeAudioCall(this, intent, this);
             if (mAudioCall == null) {
                 throw new SipException("no session to handle audio call");
             }
@@ -176,8 +176,7 @@ public class SipCallUi extends Activity implements OnClickListener {
             return;
         }
         SipProfile callee = new SipProfile.Builder(calleeUri).build();
-        mAudioCall = mSipManager.makeAudioCall(this, caller, callee,
-                createListener());
+        mAudioCall = mSipManager.makeAudioCall(this, caller, callee, this);
     }
 
     private void setCallStatus(Throwable e) {
@@ -202,67 +201,75 @@ public class SipCallUi extends Activity implements OnClickListener {
         });
     }
 
-    private SipAudioCall.Listener createListener() {
-        return new SipAudioCall.Adapter() {
-            public void onChanged(SipAudioCall call) {
-                Log.v(TAG, "onChanged(): " + call + " <--> " + mAudioCall);
-                if (mAudioCall != call) return;
-                setCallStatus();
-            }
+    public synchronized void onChanged(SipAudioCall call) {
+        Log.v(TAG, "onChanged(): " + call + " <--> " + mAudioCall);
+        if (mAudioCall != call) return;
+        setCallStatus();
+    }
 
-            public void onCalling(SipAudioCall call) {
-                if (mAudioCall != call) return;
-                setCallStatus();
-                showToast("Dialing...");
-            }
+    public synchronized void onCalling(SipAudioCall call) {
+        if (mAudioCall != call) return;
+        setCallStatus();
+        showToast("Dialing...");
+    }
 
-            public void onRinging(SipAudioCall call, SipProfile caller) {
-                Log.v(TAG, "onRinging(): " + call + " <--> " + mAudioCall);
-                if (mAudioCall != null) return;
-                mCaller = caller.getUserName() + '@' + caller.getSipDomain();
-                showCallNotificationDialog(caller);
-                setCallStatus();
-            }
+    public synchronized void onRinging(SipAudioCall call, SipProfile caller) {
+        Log.v(TAG, "onRinging(): " + call + " <--> " + mAudioCall);
+        if (mAudioCall != null) return;
+        mCaller = caller.getUserName() + '@' + caller.getSipDomain();
+        showCallNotificationDialog(caller);
+        setCallStatus();
+    }
 
-            public void onCallEstablished(SipAudioCall call) {
-                Log.v(TAG, "onCallEstablished(): " + call + " <--> " + mAudioCall);
-                mCallTime = new Date().getTime();
-                if (mAudioCall != call) return;
-                setCallStatus();
-                setText(mPeerBox, getDisplayName(call.getPeerProfile()));
-                showToast("Call established");
-                setAllButtonsEnabled(true);
-            }
+    public void onRingingBack(SipAudioCall call) {
+    }
 
-            public void onCallEnded(SipAudioCall call) {
-                Log.v(TAG, "onCallEnded(): " + call + " <--> " + mAudioCall);
-                if (mAudioCall != call) return;
-                if (mDialog != null) {
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            dismissDialog(mDialog.getId());
-                        }
-                    });
+    public void onReadyToCall(SipAudioCall call) {
+    }
+
+    public synchronized void onCallEstablished(SipAudioCall call) {
+        Log.v(TAG, "onCallEstablished(): " + call + " <--> " + mAudioCall);
+        mCallTime = new Date().getTime();
+        if (mAudioCall != call) return;
+        setCallStatus();
+        setText(mPeerBox, getDisplayName(call.getPeerProfile()));
+        showToast("Call established");
+        setAllButtonsEnabled(true);
+    }
+
+    public void onCallHeld(SipAudioCall call) {
+    }
+
+    public void onCallBusy(SipAudioCall call) {
+    }
+
+    public synchronized void onCallEnded(SipAudioCall call) {
+        Log.v(TAG, "onCallEnded(): " + call + " <--> " + mAudioCall);
+        if (mAudioCall != call) return;
+        if (mDialog != null) {
+            runOnUiThread(new Runnable() {
+                public void run() {
+                    dismissDialog(mDialog.getId());
                 }
-                setCallStatus();
-                mAudioCall = null;
-                addCallLog();
-                setAllButtonsEnabled(false);
-                setText(mPeerBox, "...");
-                showToast("Call ended");
-                finish();
-            }
+            });
+        }
+        setCallStatus();
+        mAudioCall = null;
+        addCallLog();
+        setAllButtonsEnabled(false);
+        setText(mPeerBox, "...");
+        showToast("Call ended");
+        finish();
+    }
 
-            public void onError(SipAudioCall call, String errorMessage) {
-                Log.v(TAG, "onError(): " + call + " <--> " + mAudioCall);
-                if (mAudioCall != call) return;
-                mError = new SipException(errorMessage);
-                setCallStatus();
-                mAudioCall = null;
-                setAllButtonsEnabled(false);
-                showToast("Call ended");
-            }
-        };
+    public synchronized void onError(SipAudioCall call, String errorMessage) {
+        Log.v(TAG, "onError(): " + call + " <--> " + mAudioCall);
+        if (mAudioCall != call) return;
+        mError = new SipException(errorMessage);
+        setCallStatus();
+        mAudioCall = null;
+        setAllButtonsEnabled(false);
+        showToast("Call ended");
     }
 
     private void closeAudioCall() {
