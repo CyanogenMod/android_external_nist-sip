@@ -170,7 +170,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     @Override
     public synchronized void onRingingBack(ISipSession session) {
         Log.d(TAG, "sip call ringing back: " + session);
-        if (mInCall) startRingbackTone();
+        if (!mInCall) startRingbackTone();
         if (mListener != null) {
             try {
                 mListener.onRingingBack(SipAudioCallImpl.this);
@@ -541,7 +541,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
                 mMediaSocket = null;
             }
         }
-        setSpeakerMode();
+        setInCallMode();
     }
 
     private int getLocalMediaPort() {
@@ -582,14 +582,12 @@ public class SipAudioCallImpl extends SipSessionAdapter
             mRingbackTone = new ToneGenerator(
                     AudioManager.STREAM_MUSIC, toneVolume);
         }
-        setInCallMode();
         mRingbackTone.startTone(ToneGenerator.TONE_CDMA_LOW_PBX_L);
     }
 
     private void stopRingbackTone() {
         if (mRingbackTone != null) {
             mRingbackTone.stopTone();
-            setSpeakerMode();
             mRingbackTone.release();
             mRingbackTone = null;
         }
