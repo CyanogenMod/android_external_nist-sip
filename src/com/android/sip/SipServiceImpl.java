@@ -32,6 +32,7 @@ import android.net.sip.SipSessionState;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.io.IOException;
@@ -88,6 +89,7 @@ class SipServiceImpl extends ISipService.Stub {
             SipSessionGroupExt group = createGroup(localProfile,
                     incomingCallBroadcastAction, listener);
             group.openToReceiveCalls();
+            if (isWifiOn()) grabWifiLock();
         } catch (SipException e) {
             FLog.e(TAG, "openToReceiveCalls()", e);
             // TODO: how to send the exception back
@@ -96,7 +98,10 @@ class SipServiceImpl extends ISipService.Stub {
 
     public synchronized void close(String localProfileUri) {
         SipSessionGroupExt group = mSipGroups.remove(localProfileUri);
-        if (group != null) group.closeToNotReceiveCalls();
+        if (group != null) {
+            group.closeToNotReceiveCalls();
+            if (isWifiOn() && !anyOpened()) releaseWifiLock();
+        }
     }
 
     public synchronized boolean isOpened(String localProfileUri) {
@@ -132,14 +137,15 @@ class SipServiceImpl extends ISipService.Stub {
         return mPendingSessions.get(callId);
     }
 
-    private void determineLocalIp() {
+    private String determineLocalIp() {
         try {
             DatagramSocket s = new DatagramSocket();
             s.connect(InetAddress.getByName("192.168.1.1"), 80);
-            mLocalIp = s.getLocalAddress().getHostAddress();
+            return s.getLocalAddress().getHostAddress();
         } catch (IOException e) {
             FLog.w(TAG, "determineLocalIp()", e);
-            // dont do anything; suppose there should be a connectivity change
+            // dont do anything; there should be a connectivity change going
+            return null;
         }
     }
 
@@ -154,7 +160,7 @@ class SipServiceImpl extends ISipService.Stub {
         return group;
     }
 
-    private synchronized SipSessionGroupExt createGroup(SipProfile localProfile,
+    private SipSessionGroupExt createGroup(SipProfile localProfile,
             String incomingCallBroadcastAction, ISipSessionListener listener)
             throws SipException {
         String key = localProfile.getUriString();
@@ -171,6 +177,36 @@ class SipServiceImpl extends ISipService.Stub {
         return group;
     }
 
+    private boolean anyOpened() {
+        for (SipSessionGroupExt group : mSipGroups.values()) {
+            if (group.isOpened()) return true;
+        }
+        return false;
+    }
+
+    private void grabWifiLock() {
+        if (mWifiLock == null) {
+            FLog.d(TAG, "acquire wifi lock");
+            mWifiLock = ((WifiManager)
+                    mContext.getSystemService(Context.WIFI_SERVICE))
+                    .createWifiLock(WifiManager.WIFI_MODE_FULL, TAG);
+            mWifiLock.acquire();
+        }
+    }
+
+    private void releaseWifiLock() {
+        if (mWifiLock != null) {
+            FLog.d(TAG, "release wifi lock");
+            mWifiLock.release();
+            mWifiLock = null;
+        }
+    }
+
+    private boolean isWifiOn() {
+        return "WIFI".equalsIgnoreCase(mNetworkType);
+        //return (mConnected && "WIFI".equalsIgnoreCase(mNetworkType));
+    }
+
     private synchronized void onConnectivityChanged(
             String type, boolean connected) {
         FLog.d(TAG, "onConnectivityChanged(): "
@@ -185,19 +221,9 @@ class SipServiceImpl extends ISipService.Stub {
         boolean wifiOff = (isWifi && !connected) || (wasWifi && !sameType);
         boolean wifiOn = isWifi && connected;
         if (wifiOff) {
-            if (mWifiLock != null) {
-                FLog.d(TAG, "release wifi lock");
-                mWifiLock.release();
-                mWifiLock = null;
-            }
+            releaseWifiLock();
         } else if (wifiOn) {
-            if (mWifiLock == null) {
-                FLog.d(TAG, "acquire wifi lock");
-                mWifiLock = ((WifiManager)
-                        mContext.getSystemService(Context.WIFI_SERVICE))
-                        .createWifiLock(WifiManager.WIFI_MODE_FULL, TAG);
-                mWifiLock.acquire();
-            }
+            if (anyOpened()) grabWifiLock();
         }
 
         try {
@@ -206,13 +232,14 @@ class SipServiceImpl extends ISipService.Stub {
             mConnected = connected;
 
             if (wasConnected) {
+                mLocalIp = null;
                 for (SipSessionGroupExt group : mSipGroups.values()) {
                     group.onConnectivityChanged(false);
                 }
             }
 
             if (connected) {
-                determineLocalIp();
+                mLocalIp = determineLocalIp();
                 for (SipSessionGroupExt group : mSipGroups.values()) {
                     group.onConnectivityChanged(true);
                 }
@@ -243,9 +270,27 @@ class SipServiceImpl extends ISipService.Stub {
         public SipSessionGroupExt(SipProfile localProfile,
                 String incomingCallBroadcastAction,
                 ISipSessionListener listener) throws SipException {
-            mSipGroup = new SipSessionGroup(mLocalIp, localProfile);
+            mSipGroup = createSipSessionGroup(mLocalIp, localProfile);
             mIncomingCallBroadcastAction = incomingCallBroadcastAction;
             mAutoRegistration.setListener(listener);
+        }
+
+        // network connectivity is tricky because network can be disconnected
+        // at any instant so need to deal with exceptions carefully even when
+        // you think you are connected
+        private SipSessionGroup createSipSessionGroup(String localIp,
+                SipProfile localProfile) throws SipException {
+            try {
+                return new SipSessionGroup(localIp, localProfile);
+            } catch (IOException e) {
+                FLog.w(TAG, "createSipSessionGroup()", e);
+                // network disconnected; just return null
+                if (localIp != null) {
+                    return createSipSessionGroup(null, localProfile);
+                } else {
+                    throw new SipException("should not occur", e);
+                }
+            }
         }
 
         public void setListener(ISipSessionListener listener) {
@@ -256,7 +301,7 @@ class SipServiceImpl extends ISipService.Stub {
             mIncomingCallBroadcastAction = action;
         }
 
-        public synchronized void openToReceiveCalls() throws SipException {
+        public void openToReceiveCalls() throws SipException {
             mOpened = true;
             if (mConnected) {
                 mSipGroup.openToReceiveCalls(this);
@@ -266,10 +311,10 @@ class SipServiceImpl extends ISipService.Stub {
                     + mIncomingCallBroadcastAction);
         }
 
-        public synchronized void onConnectivityChanged(boolean connected)
+        public void onConnectivityChanged(boolean connected)
                 throws SipException {
             if (connected) {
-                mSipGroup = new SipSessionGroup(mLocalIp,
+                mSipGroup = createSipSessionGroup(mLocalIp,
                         mSipGroup.getLocalProfile());
                 if (mOpened) openToReceiveCalls();
             } else {
@@ -281,7 +326,7 @@ class SipServiceImpl extends ISipService.Stub {
             }
         }
 
-        public synchronized void closeToNotReceiveCalls() {
+        public void closeToNotReceiveCalls() {
             mOpened = false;
             mSipGroup.closeToNotReceiveCalls();
             mAutoRegistration.stop();
@@ -296,24 +341,26 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRinging(ISipSession session, SipProfile caller,
                 byte[] sessionDescription) {
-            try {
-                if (!isRegistered()) {
-                    session.endCall();
-                    return;
-                }
+            synchronized (SipServiceImpl.this) {
+                try {
+                    if (!isRegistered()) {
+                        session.endCall();
+                        return;
+                    }
 
-                // send out incoming call broadcast
-                Log.d(TAG, " ringing~~ " + getUri() + ": " + caller.getUri()
-                        + ": " + session.getCallId());
-                addPendingSession(session);
-                Intent intent = SipManager.createIncomingCallBroadcast(
-                        mIncomingCallBroadcastAction, session.getCallId(),
-                        sessionDescription);
-                Log.d(TAG, "   send out intent: " + intent);
-                mContext.sendBroadcast(intent);
-            } catch (RemoteException e) {
-                // should never happen with a local call
-                Log.e(TAG, "processCall()", e);
+                    // send out incoming call broadcast
+                    Log.d(TAG, " ringing~~ " + getUri() + ": " + caller.getUri()
+                            + ": " + session.getCallId());
+                    addPendingSession(session);
+                    Intent intent = SipManager.createIncomingCallBroadcast(
+                            mIncomingCallBroadcastAction, session.getCallId(),
+                            sessionDescription);
+                    Log.d(TAG, "   send out intent: " + intent);
+                    mContext.sendBroadcast(intent);
+                } catch (RemoteException e) {
+                    // should never happen with a local call
+                    Log.e(TAG, "processCall()", e);
+                }
             }
         }
 
@@ -323,7 +370,7 @@ class SipServiceImpl extends ISipService.Stub {
             FLog.d(TAG, "sip session error: " + errorClass + ": " + message);
         }
 
-        public synchronized boolean isOpened() {
+        public boolean isOpened() {
             return mOpened;
         }
 
@@ -389,7 +436,7 @@ class SipServiceImpl extends ISipService.Stub {
             }
         }
 
-        public synchronized void stop() {
+        public void stop() {
             if (mSession == null) return;
             if (mConnected) mSession.unregister();
             mTimer.cancel(this);
@@ -416,7 +463,7 @@ class SipServiceImpl extends ISipService.Stub {
                     mProxy.onRegistering(mSession);
                 } else if (mRegistered) {
                     int duration = (int)
-                            (mExpiryTime - System.currentTimeMillis());
+                            (mExpiryTime - SystemClock.elapsedRealtime());
                     mProxy.onRegistrationDone(mSession, duration);
                 }
             } catch (Throwable t) {
@@ -430,7 +477,9 @@ class SipServiceImpl extends ISipService.Stub {
 
         public void run() {
             FLog.d(TAG, "  ~~~ registering");
-            if (mConnected) mSession.register(EXPIRY_TIME);
+            synchronized (SipServiceImpl.this) {
+                if (mConnected && !isStopped()) mSession.register(EXPIRY_TIME);
+            }
         }
 
         private boolean isBehindNAT(String address) {
@@ -468,75 +517,91 @@ class SipServiceImpl extends ISipService.Stub {
         @Override
         public void onRegistering(ISipSession session) {
             FLog.d(TAG, "onRegistering(): " + session + ": " + mSession);
-            if (session != mSession) return;
-            try {
-                mProxy.onRegistering(session);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistering()", t);
-            }
-        }
-
-        @Override
-        public synchronized void onRegistrationDone(
-                ISipSession session, int duration) {
-            FLog.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
-            if (session != mSession) return;
-            try {
-                mProxy.onRegistrationDone(session, duration);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationDone()", t);
-            }
-
-            if (duration > 0) {
-                mExpiryTime = System.currentTimeMillis() + (duration * 1000);
-
-                if (!mRegistered) {
-                    mRegistered = true;
-                    // allow some overlap to avoid missing calls during renew
-                    duration -= MIN_EXPIRY_TIME;
-                    if (duration < MIN_EXPIRY_TIME) duration = MIN_EXPIRY_TIME;
-                    restart(duration);
-
-                    if (isBehindNAT(mLocalIp) ||
-                            mSession.getLocalProfile().getSendKeepAlive() == true) {
-                        if (mKeepAliveProcess == null) {
-                            mKeepAliveProcess = new KeepAliveProcess(mSession);
-                        }
-                        mKeepAliveProcess.start();
-                    }
+            synchronized (SipServiceImpl.this) {
+                if (!isStopped() && (session != mSession)) return;
+                try {
+                    mProxy.onRegistering(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistering()", t);
                 }
-            } else {
-                mRegistered = false;
-                mExpiryTime = -1L;
-                FLog.d(TAG, "Refresh registration immediately");
-                run();
             }
         }
 
         @Override
-        public synchronized void onRegistrationFailed(ISipSession session,
-                String className, String message) {
+        public void onRegistrationDone(ISipSession session, int duration) {
+            FLog.d(TAG, "onRegistrationDone(): " + session + ": " + mSession);
+            synchronized (SipServiceImpl.this) {
+                if (!isStopped() && (session != mSession)) return;
+                try {
+                    mProxy.onRegistrationDone(session, duration);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationDone()", t);
+                }
+                if (isStopped()) return;
+
+                if (duration > 0) {
+                    mExpiryTime = SystemClock.elapsedRealtime()
+                            + (duration * 1000);
+
+                    if (!mRegistered) {
+                        mRegistered = true;
+                        // allow some overlap to avoid call drop during renew
+                        duration -= MIN_EXPIRY_TIME;
+                        if (duration < MIN_EXPIRY_TIME) {
+                            duration = MIN_EXPIRY_TIME;
+                        }
+                        restart(duration);
+
+                        if (isBehindNAT(mLocalIp) ||
+                                mSession.getLocalProfile().getSendKeepAlive()) {
+                            if (mKeepAliveProcess == null) {
+                                mKeepAliveProcess =
+                                        new KeepAliveProcess(mSession);
+                            }
+                            mKeepAliveProcess.start();
+                        }
+                    }
+                } else {
+                    mRegistered = false;
+                    mExpiryTime = -1L;
+                    FLog.d(TAG, "Refresh registration immediately");
+                    run();
+                }
+            }
+        }
+
+        @Override
+        public void onRegistrationFailed(ISipSession session, String className,
+                String message) {
             FLog.d(TAG, "onRegistrationFailed(): " + session + ": " + mSession
                     + ": " + className + ": " + message);
-            if (session != mSession) return;
-            onError();
-            try {
-                mProxy.onRegistrationFailed(session, className, message);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationFailed(): " + t);
+            synchronized (SipServiceImpl.this) {
+                if (!isStopped() && (session != mSession)) return;
+                try {
+                    mProxy.onRegistrationFailed(session, className, message);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationFailed(): " + t);
+                }
+
+                if (!isStopped()) onError();
             }
         }
 
         @Override
-        public synchronized void onRegistrationTimeout(ISipSession session) {
+        public void onRegistrationTimeout(ISipSession session) {
             FLog.d(TAG, "onRegistrationTimeout(): " + session + ": " + mSession);
-            if (session != mSession) return;
-            mRegistered = false;
-            onError();
-            try {
-                mProxy.onRegistrationTimeout(session);
-            } catch (Throwable t) {
-                Log.w(TAG, "onRegistrationTimeout(): " + t);
+            synchronized (SipServiceImpl.this) {
+                if (!isStopped() && (session != mSession)) return;
+                try {
+                    mProxy.onRegistrationTimeout(session);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onRegistrationTimeout(): " + t);
+                }
+
+                if (!isStopped()) {
+                    mRegistered = false;
+                    onError();
+                }
             }
         }
 

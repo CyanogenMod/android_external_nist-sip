@@ -86,8 +86,9 @@ class SipSessionGroup implements SipListener {
     private Map<String, SipSessionImpl> mSessionMap =
             new HashMap<String, SipSessionImpl>();
 
+    // throws IOException if cannot assign requested address
     public SipSessionGroup(String localIp, SipProfile myself)
-            throws SipException {
+            throws SipException, IOException {
         mLocalIp = localIp;
         mLocalProfile = myself;
         if (localIp == null) return;
@@ -102,16 +103,18 @@ class SipSessionGroup implements SipListener {
         }
         SipStack stack = mSipStack = sipFactory.createSipStack(properties);
 
-        SipProvider provider = stack.createSipProvider(
-                stack.createListeningPoint(localIp, allocateLocalPort(),
-                        myself.getProtocol()));
         try {
+            SipProvider provider = stack.createSipProvider(
+                    stack.createListeningPoint(localIp, allocateLocalPort(),
+                            myself.getProtocol()));
             provider.addSipListener(this);
+            mSipHelper = new SipHelper(stack, provider);
+        } catch (InvalidArgumentException e) {
+            throw new IOException(e.getMessage());
         } catch (TooManyListenersException e) {
             // must never happen
             throw new SipException("SipSessionGroup constructor", e);
         }
-        mSipHelper = new SipHelper(stack, provider);
         Log.d(TAG, " start stack for " + myself.getUriString());
         stack.start();
     }
