@@ -149,6 +149,7 @@ public class SipCallUi extends Activity implements OnClickListener,
             try {
                 makeAudioCall(caller, mCallee);
                 setText(mPeerBox, "Dialing " + mCallee + "...");
+                setAllButtonsEnabled(true, true, false);
             } catch (Exception e) {
                 Log.e(TAG, "makeCall()", e);
                 setCallStatus(e);
@@ -234,7 +235,7 @@ public class SipCallUi extends Activity implements OnClickListener,
         setCallStatus();
         setText(mPeerBox, getDisplayName(call.getPeerProfile()));
         showToast("Call established");
-        setAllButtonsEnabled(true);
+        setAllButtonsEnabled(true, true, true);
     }
 
     public void onCallHeld(SipAudioCall call) {
@@ -256,7 +257,7 @@ public class SipCallUi extends Activity implements OnClickListener,
         setCallStatus();
         mAudioCall = null;
         addCallLog();
-        setAllButtonsEnabled(false);
+        setAllButtonsEnabled(false, false, false);
         setText(mPeerBox, "...");
         showToast("Call ended");
         finish();
@@ -268,7 +269,7 @@ public class SipCallUi extends Activity implements OnClickListener,
         mError = new SipException(errorMessage);
         setCallStatus();
         mAudioCall = null;
-        setAllButtonsEnabled(false);
+        setAllButtonsEnabled(false, false, false);
         showToast("Call ended");
     }
 
@@ -423,19 +424,22 @@ public class SipCallUi extends Activity implements OnClickListener,
         });
     }
 
-    private void setAllButtonsEnabled(final boolean enabled) {
+    private void setAllButtonsEnabled(final boolean endButton,
+            final boolean modeButton, final boolean others) {
         runOnUiThread(new Runnable() {
             public void run() {
-                for (Button button : allButtons()) {
-                    button.setEnabled(enabled);
+                for (Button button : otherButtons()) {
+                    button.setEnabled(others);
                 }
+                mEndButton.setEnabled(endButton);
+                mModeButton.setEnabled(modeButton);
             }
         });
     }
 
-    private Button[] allButtons() {
+    private Button[] otherButtons() {
         return new Button[] {
-            mMuteButton, mEndButton, mHoldButton, mModeButton, mDtmfButton
+            mMuteButton, mHoldButton, mDtmfButton
         };
     }
 
@@ -541,15 +545,20 @@ public class SipCallUi extends Activity implements OnClickListener,
                 .unregisterListener(mProximityListener);
     }
 
+    private synchronized void onProximityChanged(float[] values) {
+        if ((mAudioCall == null) || !mAudioCall.isInCall()) return;
+        StringBuilder b = new StringBuilder();
+        for (float f : values) {
+            b.append(", " + f);
+        }
+        Log.v("Proximity", "onSensorChanged: " + b);
+        boolean far = (values[0] > 1f);
+        setAllButtonsEnabled(far, far, far);
+    }
+
     SensorEventListener mProximityListener = new SensorEventListener() {
         public void onSensorChanged(SensorEvent event) {
-            StringBuilder b = new StringBuilder();
-            for (float f : event.values) {
-                b.append(", " + f);
-            }
-            Log.v("Proximity", "onSensorChanged: " + event + b);
-            boolean far = (event.values[0] > 1f);
-            setAllButtonsEnabled((mAudioCall != null) && mAudioCall.isInCall() && far);
+            onProximityChanged(event.values);
         }
 
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
