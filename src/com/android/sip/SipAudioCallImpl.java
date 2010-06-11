@@ -295,9 +295,17 @@ public class SipAudioCallImpl extends SipSessionAdapter
             SipManager sipManager) throws SipException {
         try {
             mSipSession = sipManager.createSipSession(mLocalProfile, this);
+            if (mSipSession == null) {
+                throw new SipException(
+                        "Failed to create SipSession; network available?");
+            }
             mSipSession.makeCall(peerProfile, createOfferSessionDescription());
         } catch (Throwable e) {
-            throwSipException(e);
+            if (e instanceof SipException) {
+                throw (SipException) e;
+            } else {
+                throwSipException(e);
+            }
         }
     }
 
@@ -580,7 +588,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
             // The volume relative to other sounds in the stream
             int toneVolume = 80;
             mRingbackTone = new ToneGenerator(
-                    AudioManager.STREAM_MUSIC, toneVolume);
+                    AudioManager.STREAM_VOICE_CALL, toneVolume);
         }
         mRingbackTone.startTone(ToneGenerator.TONE_CDMA_LOW_PBX_L);
     }
