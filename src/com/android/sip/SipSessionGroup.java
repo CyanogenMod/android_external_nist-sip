@@ -16,6 +16,9 @@
 
 package com.android.sip;
 
+import gov.nist.javax.sip.header.SIPHeaderNames;
+import gov.nist.javax.sip.header.WWWAuthenticate;
+
 import android.net.sip.ISipSession;
 import android.net.sip.ISipSessionListener;
 import android.net.sip.SessionDescription;
@@ -51,6 +54,7 @@ import javax.sip.SipProvider;
 import javax.sip.SipStack;
 import javax.sip.TimeoutEvent;
 import javax.sip.Transaction;
+import javax.sip.TransactionState;
 import javax.sip.TransactionTerminatedEvent;
 import javax.sip.address.Address;
 import javax.sip.address.SipURI;
@@ -66,6 +70,7 @@ import javax.sip.message.Response;
  */
 class SipSessionGroup implements SipListener {
     private static final String TAG = "SipSession";
+    private static final String ANONYMOUS = "anonymous";
     private static final int EXPIRY_TIME = 3600;
 
     private static final EventObject DEREGISTER = new EventObject("Deregister");
@@ -77,6 +82,7 @@ class SipSessionGroup implements SipListener {
     private SipStack mSipStack;
     private SipHelper mSipHelper;
     private SipProfile mLocalProfile;
+    private String mLastNonce;
 
     // session that processes INVITE requests
     private SipSessionImpl mCallReceiverSession;
@@ -546,8 +552,16 @@ class SipSessionGroup implements SipListener {
                     return true;
                 case Response.UNAUTHORIZED:
                 case Response.PROXY_AUTHENTICATION_REQUIRED:
-                    mSipHelper.handleChallenge(
-                            (ResponseEvent)evt, mLocalProfile);
+                    String nonce = getNonceFromResponse(response);
+                    if (((nonce != null) && nonce.equals(mLastNonce)) ||
+                            (nonce == mLastNonce)) {
+                        Log.v(TAG, "Incorrect username/password");
+                        reset();
+                        onRegistrationFailed(createCallbackException(response));
+                    } else {
+                        mSipHelper.handleChallenge(event, mLocalProfile);
+                        mLastNonce = nonce;
+                    }
                     return true;
                 default:
                     if (statusCode >= 500) {
@@ -558,6 +572,12 @@ class SipSessionGroup implements SipListener {
                 }
             }
             return false;
+        }
+
+        private String getNonceFromResponse(Response response) {
+            WWWAuthenticate authHeader = (WWWAuthenticate)(response.getHeader(
+                    SIPHeaderNames.WWW_AUTHENTICATE));
+            return (authHeader == null) ? null : authHeader.getNonce();
         }
 
         private boolean readyForCall(EventObject evt) throws SipException {
@@ -887,7 +907,9 @@ class SipSessionGroup implements SipListener {
                     (FromHeader) request.getHeader(FromHeader.NAME);
             Address address = fromHeader.getAddress();
             SipURI uri = (SipURI) address.getURI();
-            return new SipProfile.Builder(uri.getUser(), uri.getHost())
+            String username = uri.getUser();
+            if (username == null) username = ANONYMOUS;
+            return new SipProfile.Builder(username, uri.getHost())
                     .setPort(uri.getPort())
                     .setDisplayName(address.getDisplayName())
                     .build();

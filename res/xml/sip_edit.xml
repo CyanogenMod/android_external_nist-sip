@@ -88,4 +88,11 @@
         android:defaultValue="false"
         android:summary="@string/send_keepalive_summary"
         android:dialogTitle="@string/send_keepalive_title"/>
+
+    <CheckBoxPreference
+        android:key="@string/auto_registration"
+        android:title="@string/auto_registration_title"
+        android:defaultValue="true"
+        android:summary="@string/auto_registration_summary"
+        android:dialogTitle="@string/auto_registration_title"/>
 </PreferenceScreen>

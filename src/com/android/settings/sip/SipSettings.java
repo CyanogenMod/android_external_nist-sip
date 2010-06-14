@@ -38,6 +38,7 @@ import android.view.View;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.widget.AdapterView.AdapterContextMenuInfo;
+import android.widget.Button;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -61,9 +62,8 @@ public class SipSettings extends PreferenceActivity {
     static final String PROFILE_OBJ_FILE = ".pobj";
     static final String PROFILES_DIR = "/profiles/";
 
-    private static final String PREF_AUTO_REG = "auto_registration";
+    private static final String PREF_AUTO_REG = "auto_reg";
     private static final String PREF_SIP_CALL_FIRST = "sip_call_first";
-    private static final String PREF_ADD_SIP = "add_sip_account";
     private static final String PREF_SIP_LIST = "sip_account_list";
     private static final String TAG = "SipSettings";
     private static final String REGISTERED = "REGISTERED";
@@ -114,6 +114,7 @@ public class SipSettings extends PreferenceActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        setContentView(R.layout.sip_settings_ui);
         addPreferencesFromResource(R.xml.sip_setting);
         mProfilesDirectory = getFilesDir().getAbsolutePath() + PROFILES_DIR;
         mSipListContainer = (PreferenceCategory) findPreference(PREF_SIP_LIST);
@@ -123,19 +124,16 @@ public class SipSettings extends PreferenceActivity {
         // for long-press gesture on a profile preference
         registerForContextMenu(getListView());
 
-        registerForAutoRegistrationListener();
+        registerForGlobalSettingsListener();
 
         updateProfilesStatus();
     }
 
     private void registerForAddSipListener() {
-        PreferenceScreen mAddSip =
-                (PreferenceScreen) findPreference(PREF_ADD_SIP);
-        mAddSip.setOnPreferenceClickListener(
-                new OnPreferenceClickListener() {
-                    public boolean onPreferenceClick(Preference preference) {
+        ((Button) findViewById(R.id.add_remove_account_button))
+                .setOnClickListener(new android.view.View.OnClickListener() {
+                    public void onClick(View v) {
                         startSipEditor(null);
-                        return true;
                     }
                 });
     }
@@ -146,11 +144,11 @@ public class SipSettings extends PreferenceActivity {
 
     private class AutoRegistrationClickHandler implements ClickEventCallback {
         public void handle(boolean enabled) {
-            if (enabled) registerAllProfiles();
+            registerEnabledProfiles(enabled);
         }
     }
 
-    private void registerForAutoRegistrationListener() {
+    private void registerForGlobalSettingsListener() {
         mSettingsEditor = getSharedPreferences(
                 SipAutoRegistration.SIP_SHARED_PREFERENCES,
                 Context.MODE_WORLD_READABLE).edit();
@@ -237,15 +235,20 @@ public class SipSettings extends PreferenceActivity {
         }
     }
 
-    private void registerAllProfiles() {
+    private void registerEnabledProfiles(boolean enabled) {
         try {
             for (SipProfile p : mSipProfileList) {
-                if (!mSipManager.isRegistered(p.getUriString())) {
-                    registerProfile(p);
+                if (p.getAutoRegistration() == false) continue;
+                if (enabled) {
+                    if (!mSipManager.isRegistered(p.getUriString())) {
+                        registerProfile(p);
+                    }
+                } else {
+                    unRegisterProfile(p);
                 }
             }
         } catch (SipException e) {
-            Log.e(TAG, "Error!registerAllProfiles():", e);
+            Log.e(TAG, "Error!registerEnabledProfiles():", e);
         }
     }
 
@@ -292,56 +295,6 @@ public class SipSettings extends PreferenceActivity {
         return menuInfo.position - mSipListContainer.getOrder() - 1;
     }
 
-    @Override
-    public void onCreateContextMenu(ContextMenu menu, View v,
-            ContextMenuInfo menuInfo) {
-        super.onCreateContextMenu(menu, v, menuInfo);
-
-        SipProfile p = getProfile(getProfilePositionFrom(
-                    (AdapterContextMenuInfo) menuInfo));
-        if (p != null) {
-            boolean opened;
-            try {
-                 opened = mSipManager.isOpened(p.getUriString());
-            } catch (SipException e) {
-                Log.e(TAG, "Cannot get status of " + p.getUriString(), e);
-                return;
-            }
-            menu.setHeaderTitle(p.getProfileName());
-            menu.add(0, CONTEXT_MENU_REGISTER_ID, 0,
-                    R.string.sip_menu_register).setEnabled(!opened);
-            menu.add(0, CONTEXT_MENU_UNREGISTER_ID, 0,
-                    R.string.sip_menu_unregister).setEnabled(opened);
-            menu.add(0, CONTEXT_MENU_EDIT_ID, 0, R.string.sip_menu_edit);
-            menu.add(0, CONTEXT_MENU_DELETE_ID, 0, R.string.sip_menu_delete);
-        }
-    }
-
-    @Override
-    public boolean onContextItemSelected(MenuItem item) {
-        SipProfile p = getProfile(getProfilePositionFrom(
-                (AdapterContextMenuInfo) item.getMenuInfo()));
-
-        switch(item.getItemId()) {
-        case CONTEXT_MENU_REGISTER_ID:
-            registerProfile(p);
-            return true;
-        case CONTEXT_MENU_UNREGISTER_ID:
-            unRegisterProfile(p);
-            return true;
-
-        case CONTEXT_MENU_EDIT_ID:
-            startSipEditor(p);
-            return true;
-
-        case CONTEXT_MENU_DELETE_ID:
-            deleteProfile(p);
-            return true;
-        }
-
-        return super.onContextItemSelected(item);
-    }
-
     private void registerProfile(SipProfile profile) {
         if (profile != null) {
             try {
@@ -376,7 +329,7 @@ public class SipSettings extends PreferenceActivity {
         file.delete();
     }
 
-    private void deleteProfile(SipProfile p) {
+    void deleteProfile(SipProfile p) {
         mSipProfileList.remove(p);
         SipPreference pref = mSipPreferenceMap.remove(p.getUriString());
         mSipListContainer.removePreference(pref);
@@ -399,14 +352,24 @@ public class SipSettings extends PreferenceActivity {
     @Override
     protected void onActivityResult(final int requestCode, final int resultCode,
             final Intent intent) {
-        if (resultCode != RESULT_OK) return;
+        if (resultCode != RESULT_OK && resultCode != RESULT_FIRST_USER) return;
         SipProfile profile = intent.getParcelableExtra(KEY_SIP_PROFILE);
         try {
-            saveProfileToStorage(profile);
+            if (resultCode == RESULT_OK) {
+                Log.v(TAG, "New Profile Name:" + profile.getProfileName());
+                saveProfileToStorage(profile);
+                if (((CheckBoxPreference) findPreference
+                        (PREF_AUTO_REG)).isChecked() &&
+                        profile.getAutoRegistration() == true) {
+                    registerProfile(profile);
+                }
+            } else {
+                Log.v(TAG, "Removed Profile Name:" + profile.getProfileName());
+                deleteProfile(profile);
+            }
         } catch (IOException e) {
-            Log.v(TAG, "Can not save the profile : " + e.getMessage());
+            Log.v(TAG, "Can not handle the profile : " + e.getMessage());
         }
-        Log.v(TAG, "New Profile Name is " + profile.getProfileName());
     }
 
     static SipProfile deserialize(File profileObjectFile) throws IOException {

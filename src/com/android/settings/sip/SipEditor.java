@@ -35,6 +35,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.Button;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -68,7 +69,8 @@ public class SipEditor extends PreferenceActivity
         ProxyAddress(R.string.proxy_address, 5, EMPTY),
         Port(R.string.port, 6, DEFAULT_SIP_PORT),
         Transport(R.string.transport, 7, DEFAULT_PROTOCOL),
-        SendKeepAlive(R.string.send_keepalive, 8, EMPTY);
+        SendKeepAlive(R.string.send_keepalive, 8, EMPTY),
+        AutoRegistration(R.string.auto_registration, 9, EMPTY);
 
         /**
          * @param key The key name of the preference.
@@ -93,13 +95,29 @@ public class SipEditor extends PreferenceActivity
     public void onCreate(Bundle savedInstanceState) {
         Log.v(TAG, "start profile editor");
         super.onCreate(savedInstanceState);
+
+        setContentView(R.layout.sip_settings_ui);
         addPreferencesFromResource(R.xml.sip_edit);
-        SipProfile p = (SipProfile) ((savedInstanceState == null)
+        final SipProfile p = (SipProfile) ((savedInstanceState == null)
                 ? getIntent().getParcelableExtra(SipSettings.KEY_SIP_PROFILE)
                 : savedInstanceState.getParcelable(KEY_PROFILE));
 
         for (PreferenceKey key : PreferenceKey.values()) {
             mPreferences[key.index] = setupPreference(getString(key.text));
+        }
+        if (p == null) {
+            findViewById(R.id.add_remove_account_bar)
+                    .setVisibility(View.GONE);
+        } else {
+            Button removeButton =
+                    (Button)findViewById(R.id.add_remove_account_button);
+            removeButton.setText(getString(R.string.remove_sip_account));
+            removeButton.setOnClickListener(
+                    new android.view.View.OnClickListener() {
+                        public void onClick(View v) {
+                            setRemovedProfileAndFinish(p);
+                        }
+                    });
         }
         loadPreferencesFromProfile(p);
     }
@@ -140,6 +158,17 @@ public class SipEditor extends PreferenceActivity
         return super.onKeyDown(keyCode, event);
     }
 
+    private void setRemovedProfileAndFinish(SipProfile p) {
+        try {
+            Intent intent = new Intent(this, SipSettings.class);
+            intent.putExtra(SipSettings.KEY_SIP_PROFILE, (Parcelable) p);
+            setResult(RESULT_FIRST_USER, intent);
+            finish();
+        } catch (Exception e) {
+            showAlert(e.getMessage());
+        }
+    }
+
     private void showAlert(String message) {
         new AlertDialog.Builder(this)
                 .setTitle(android.R.string.dialog_alert_title)
@@ -160,10 +189,11 @@ public class SipEditor extends PreferenceActivity
                 value = ((ListPreference)pref).getValue();
             } else if (pref instanceof EditTextPreference) {
                 value = ((EditTextPreference)pref).getText();
+            } else if (pref instanceof CheckBoxPreference) {
+                continue;
             }
             if (TextUtils.isEmpty(value) &&
-                    (pref != mPreferences[PreferenceKey.ProxyAddress.index]) &&
-                    (pref != mPreferences[PreferenceKey.SendKeepAlive.index])) {
+                    (pref != mPreferences[PreferenceKey.ProxyAddress.index])) {
                 showAlert(pref.getTitle() + " "
                         + getString(R.string.empty_alert));
                 return false;
@@ -193,6 +223,8 @@ public class SipEditor extends PreferenceActivity
                     .setDisplayName(getValue(PreferenceKey.DisplayName))
                     .setPort(Integer.parseInt(getValue(PreferenceKey.Port)))
                     .setSendKeepAlive(isChecked(PreferenceKey.SendKeepAlive))
+                    .setAutoRegistration(
+                            isChecked(PreferenceKey.AutoRegistration))
                     .build();
         } catch (Exception e) {
             Log.e(TAG, "Can not create new SipProfile : " + e.getMessage());
@@ -223,7 +255,8 @@ public class SipEditor extends PreferenceActivity
                     if (key == PreferenceKey.Port) {
                         setValue(key,
                                 String.valueOf(meth.invoke(p, (Object[])null)));
-                    } else if (key == PreferenceKey.SendKeepAlive) {
+                    } else if (key == PreferenceKey.SendKeepAlive
+                            || key == PreferenceKey.AutoRegistration) {
                         setCheckBox(key, ((Boolean)
                                 meth.invoke(p, (Object[])null)).booleanValue());
                     } else {

@@ -47,6 +47,7 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
     private String mProtocol = ListeningPoint.UDP;
     private String mProfileName;
     private boolean mSendKeepAlive = false;
+    private boolean mAutoRegistration = true;
 
     /** @hide */
     public static final Parcelable.Creator<SipProfile> CREATOR =
@@ -213,6 +214,19 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
             return this;
         }
 
+
+        /**
+         * Sets the auto. registration flag.
+         *
+         * @param flag true if the profile will be registered automatically,
+         *      false otherwise
+         * @return this builder object
+         */
+        public Builder setAutoRegistration(boolean flag) {
+            mProfile.mAutoRegistration = flag;
+            return this;
+        }
+
         /**
          * Builds and returns the SIP profile object.
          *
@@ -249,6 +263,7 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
         mProtocol = in.readString();
         mProfileName = in.readString();
         mSendKeepAlive = (in.readInt() == 0) ? false : true;
+        mAutoRegistration = (in.readInt() == 0) ? false : true;
     }
 
     /** @hide */
@@ -260,6 +275,7 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
         out.writeString(mProtocol);
         out.writeString(mProfileName);
         out.writeInt(mSendKeepAlive ? 1 : 0);
+        out.writeInt(mAutoRegistration ? 1 : 0);
     }
 
     /** @hide */
@@ -374,5 +390,14 @@ public class SipProfile implements UserCredentials, Parcelable, Serializable {
      */
     public boolean getSendKeepAlive() {
         return mSendKeepAlive;
+    }
+
+    /**
+     * Gets the flag of 'Auto Registration'.
+     *
+     * @return the flag of registering the profile automatically.
+     */
+    public boolean getAutoRegistration() {
+        return mAutoRegistration;
     }
 }

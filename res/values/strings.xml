@@ -17,9 +17,11 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Sip Account Settings</string>
     <string name="sip_settings_activity_title">Sip Settings Activity</string>
-    <string name="auto_registration">Auto Registration</string>
+
+    <string name="auto_reg">Auto Registration</string>
     <string name="call_priority">Outgoing Call via SIP</string>
     <string name="add_sip_account">Add SIP account</string>
+    <string name="remove_sip_account">Remove SIP account</string>
     <string name="sip_account_list">SIP accounts</string>
 
     <string name="sip_menu_save">Save</string>
@@ -48,7 +50,11 @@
     <string name="transport_summary">TCP</string>
     <string name="send_keepalive_title">Send keep-alive</string>
     <string name="send_keepalive_summary">Send SIP keep-alive messages</string>
+    <string name="auto_registration_title">Auto. Registration</string>
+    <string name="auto_registration_summary">Register the profile automatically</string>
 
+    <string name="sip_menu_enable_autoregister">Enable auto registration</string>
+    <string name="sip_menu_disable_autoregister">Disable auto registration</string>
     <string name="sip_menu_register">Register the account</string>
     <string name="sip_menu_unregister">Unregister the account</string>
     <string name="sip_menu_edit">Edit the account</string>
@@ -66,4 +72,5 @@
     <string name="port">Port</string>
     <string name="transport">Protocol</string>
     <string name="send_keepalive">SendKeepAlive</string>
+    <string name="auto_registration">AutoRegistration</string>
 </resources>
