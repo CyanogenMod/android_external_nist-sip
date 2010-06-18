@@ -427,6 +427,9 @@ class SipServiceImpl extends ISipService.Stub {
                 mBackoff = 1;
                 mSession = (SipSessionGroup.SipSessionImpl)
                         group.createSession(this);
+                // return right away if no active network connection.
+                if (mSession == null) return;
+
                 // start unregistration to clear up old registration at server
                 // TODO: when rfc5626 is deployed, use reg-id and sip.instance
                 // in registration to avoid adding duplicate entries to server

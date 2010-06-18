@@ -549,6 +549,7 @@ class SipSessionGroup implements SipListener {
                     onRegistrationDone((state == SipSessionState.REGISTERING)
                             ? getExpiryTime(((ResponseEvent) evt).getResponse())
                             : -1);
+                    mLastNonce = null;
                     return true;
                 case Response.UNAUTHORIZED:
                 case Response.PROXY_AUTHENTICATION_REQUIRED:
