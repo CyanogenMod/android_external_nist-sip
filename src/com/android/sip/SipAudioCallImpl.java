@@ -36,6 +36,7 @@ import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipSessionAdapter;
 import android.net.sip.SipSessionState;
+import android.os.Message;
 import android.os.RemoteException;
 import android.os.Vibrator;
 import android.provider.Settings;
@@ -458,11 +459,15 @@ public class SipAudioCallImpl extends SipSessionAdapter
                 .setSpeakerphoneOn(true);
     }
 
-    public synchronized void sendDtmf(int code) {
-        if (mSipSession == null) return;
-        if (SipSessionState.IN_CALL == getState()) {
+    public void sendDtmf(int code) {
+        sendDtmf(code, null);
+    }
+
+    public synchronized void sendDtmf(int code, Message result) {
+        if ((mSipSession != null) && (SipSessionState.IN_CALL == getState())) {
             mRtpSession.sendDtmf(code);
         }
+        if (result != null) result.sendToTarget();
     }
 
     private SdpSessionDescription.AudioCodec getCodec(SdpSessionDescription sd) {

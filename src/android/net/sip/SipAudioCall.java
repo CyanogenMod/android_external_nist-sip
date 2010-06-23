@@ -16,6 +16,8 @@
 
 package android.net.sip;
 
+import android.os.Message;
+
 import javax.sip.SipException;
 
 /**
@@ -199,6 +201,14 @@ public interface SipAudioCall {
      * @param code the DTMF code to send
      */
     void sendDtmf(int code);
+
+    /**
+     * Sends a DTMF code.
+     *
+     * @param code the DTMF code to send
+     * @param result the result message to send when done
+     */
+    void sendDtmf(int code, Message result);
 
     /**
      * Checks if the call is established.
