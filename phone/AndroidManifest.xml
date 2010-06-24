@@ -20,6 +20,7 @@
         android:sharedUserLabel="@string/dialerIconLabel"
 >
 
+    <original-package android:name="com.android.phone2" />
 
     <protected-broadcast android:name="android.intent.action.SERVICE_STATE" />
     <protected-broadcast android:name="android.intent.action.RADIO_TECHNOLOGY" />
@@ -82,7 +83,7 @@
                  android:label="@string/dialerIconLabel"
                  android:icon="@drawable/ic_launcher_phone">
             <provider android:name="IccProvider"
-                      android:authorities="icc2"
+                      android:authorities="icc"
                       android:multiprocess="true"
                       android:readPermission="android.permission.READ_CONTACTS"
                       android:writePermission="android.permission.WRITE_CONTACTS" />

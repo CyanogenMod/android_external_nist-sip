@@ -637,6 +637,12 @@ public class SipConnection extends Connection {
         return Connection.PRESENTATION_ALLOWED;
     }
 
+    @Override
+    public UUSInfo getUUSInfo() {
+        // FIXME: what's this for SIP?
+        return null;
+    }
+
     private class MyHandler extends Handler {
         MyHandler(Looper l) {
             super(l);
@@ -651,7 +657,7 @@ public class SipConnection extends Connection {
                     processNextPostDialChar();
                     break;
                 case EVENT_WAKE_LOCK_TIMEOUT:
-                    releaseWakeLock();
+                    //releaseWakeLock();
                     break;
             }
         }

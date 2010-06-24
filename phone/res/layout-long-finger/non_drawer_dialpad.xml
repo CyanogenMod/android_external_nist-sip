@@ -22,7 +22,7 @@
      dtmf_twelve_key_dialer.xml and dialpad.xml, but in a more
      compact layout, and without the SlidingDrawer container.
      -->
-<com.android.phone2.DTMFTwelveKeyDialerView
+<com.android.phone.DTMFTwelveKeyDialerView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/non_drawer_dtmf_dialer"
     android:layout_width="match_parent"
@@ -54,7 +54,7 @@
         android:clickable="false"/>
 
     <!-- The dialpad itself -->
-    <com.android.phone2.ButtonGridLayout
+    <com.android.phone.ButtonGridLayout
         android:id="@+id/dialpad"
         android:paddingLeft="7dp"
         android:paddingRight="7dp"
@@ -147,6 +147,6 @@
                      android:src="@drawable/dial_num_pound"
                      android:background="@drawable/btn_dial_green"
                      />
-    </com.android.phone2.ButtonGridLayout>
+    </com.android.phone.ButtonGridLayout>
 
-</com.android.phone2.DTMFTwelveKeyDialerView>
+</com.android.phone.DTMFTwelveKeyDialerView>

@@ -387,6 +387,7 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     @Override
     public void onCreate() {
         if (VDBG) Log.v(LOG_TAG, "onCreate()...");
+        Log.v(LOG_TAG, "haha");
 
         ContentResolver resolver = getContentResolver();
 
@@ -458,9 +459,7 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
             }
 
             // register for MMI/USSD
-            if (phoneType == Phone.PHONE_TYPE_GSM) {
-                phone.registerForMmiComplete(mHandler, MMI_COMPLETE, null);
-            }
+            phone.registerForMmiComplete(mHandler, MMI_COMPLETE, null);
 
             // register connection tracking to PhoneUtils
             PhoneUtils.initializeConnectionHandler(phone);
@@ -527,9 +526,7 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
             }
         }
 
-        boolean phoneIsCdma = (phone.getPhoneType() == Phone.PHONE_TYPE_CDMA);
-
-        if (phoneIsCdma) {
+        if (TelephonyCapabilities.supportsOtasp(phone)) {
             cdmaOtaProvisionData = new OtaUtils.CdmaOtaProvisionData();
             cdmaOtaConfigData = new OtaUtils.CdmaOtaConfigData();
             cdmaOtaScreenState = new OtaUtils.CdmaOtaScreenState();
@@ -588,6 +585,13 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
         return sMe;
     }
 
+    /**
+     * Returns the Phone associated with this instance
+     */
+    static Phone getPhone() {
+        return getInstance().phone;
+    }
+
     Ringer getRinger() {
         return ringer;
     }
@@ -613,7 +617,7 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                 | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
-        intent.setClassName("com.android.phone", getCallScreenClassName());
+        intent.setClassName("com.android.phone2", getCallScreenClassName());
         return intent;
     }
 
@@ -707,11 +711,12 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
      */
     void dismissCallScreen() {
         if (mInCallScreen != null) {
-            if (mInCallScreen.isOtaCallInActiveState()
+            if ((TelephonyCapabilities.supportsOtasp(phone)) &&
+                    (mInCallScreen.isOtaCallInActiveState()
                     || mInCallScreen.isOtaCallInEndState()
                     || ((cdmaOtaScreenState != null)
                     && (cdmaOtaScreenState.otaScreenState
-                            != CdmaOtaScreenState.OtaScreenState.OTA_STATUS_UNDEFINED))) {
+                            != CdmaOtaScreenState.OtaScreenState.OTA_STATUS_UNDEFINED)))) {
                 // TODO: During OTA Call, display should not become dark to
                 // allow user to see OTA UI update. Phone app needs to hold
                 // a SCREEN_DIM_WAKE_LOCK wake lock during the entire OTA call.
@@ -1255,11 +1260,12 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     private void initForNewRadioTechnology() {
         if (DBG) Log.d(LOG_TAG, "initForNewRadioTechnology...");
 
-        if (phone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+         if (phone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
             // Create an instance of CdmaPhoneCallState and initialize it to IDLE
             cdmaPhoneCallState = new CdmaPhoneCallState();
             cdmaPhoneCallState.CdmaPhoneCallStateInit();
-
+        }
+        if (TelephonyCapabilities.supportsOtasp(phone)) {
             //create instances of CDMA OTA data classes
             if (cdmaOtaProvisionData == null) {
                 cdmaOtaProvisionData = new OtaUtils.CdmaOtaProvisionData();
@@ -1273,6 +1279,9 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
             if (cdmaOtaInCallScreenUiState == null) {
                 cdmaOtaInCallScreenUiState = new OtaUtils.CdmaOtaInCallScreenUiState();
             }
+        } else {
+            //Clean up OTA data in GSM/UMTS. It is valid only for CDMA
+            clearOtaState();
         }
 
         ringer.updateRingerContextAfterRadioTechnologyChange(this.phone);
@@ -1459,7 +1468,7 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
             } else if (action.equals(TelephonyIntents.ACTION_SERVICE_STATE_CHANGED)) {
                 handleServiceStateChanged(intent);
             } else if (action.equals(TelephonyIntents.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED)) {
-                if (phone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+                if (TelephonyCapabilities.supportsEcm(phone)) {
                     Log.d(LOG_TAG, "Emergency Callback Mode arrived in PhoneApp.");
                     // Start Emergency Callback Mode service
                     if (intent.getBooleanExtra("phoneinECMState", false)) {
@@ -1467,8 +1476,10 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
                                 EmergencyCallbackModeService.class));
                     }
                 } else {
-                    Log.e(LOG_TAG, "Error! Emergency Callback Mode not supported for " +
-                            phone.getPhoneName() + " phones");
+                    // It doesn't make sense to get ACTION_EMERGENCY_CALLBACK_MODE_CHANGED
+                    // on a device that doesn't support ECM in the first place.
+                    Log.e(LOG_TAG, "Got ACTION_EMERGENCY_CALLBACK_MODE_CHANGED, "
+                          + "but ECM isn't supported for phone: " + phone.getPhoneName());
                 }
             } else if (action.equals(Intent.ACTION_DOCK_EVENT)) {
                 mDockState = intent.getIntExtra(Intent.EXTRA_DOCK_STATE,
@@ -1544,21 +1555,9 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
         // If service just returned, start sending out the queued messages
         ServiceState ss = ServiceState.newFromBundle(intent.getExtras());
 
-        boolean hasService = true;
-        boolean isCdma = false;
-        String eriText = "";
-
         if (ss != null) {
             int state = ss.getState();
             NotificationMgr.getDefault().updateNetworkSelection(state);
-            switch (state) {
-                case ServiceState.STATE_OUT_OF_SERVICE:
-                case ServiceState.STATE_POWER_OFF:
-                    hasService = false;
-                    break;
-            }
-        } else {
-            hasService = false;
         }
     }
 

@@ -64,7 +64,8 @@
                 android:visibility="gone">
             <ImageButton android:id="@+id/holdButton"
                     style="@style/InCallRoundTouchButton"
-                    android:src="@drawable/ic_in_call_touch_round_hold" />
+                    android:src="@drawable/ic_in_call_touch_round_hold"
+                    android:contentDescription="@string/onscreenHoldText" />
             <TextView android:id="@+id/holdButtonLabel"
                     style="@style/InCallRoundButtonLabel" />
         </LinearLayout>
@@ -78,7 +79,8 @@
                 android:visibility="gone">
             <ImageButton android:id="@+id/swapButton"
                     style="@style/InCallRoundTouchButton"
-                    android:src="@drawable/ic_in_call_touch_round_swap" />
+                    android:src="@drawable/ic_in_call_touch_round_swap"
+                    android:contentDescription="@string/onscreenSwapCallsText"/>
             <TextView android:id="@+id/swapButtonLabel"
                 style="@style/InCallRoundButtonLabel" />
         </LinearLayout>
@@ -94,7 +96,8 @@
                 android:visibility="gone">
             <ImageButton android:id="@+id/cdmaMergeButton"
                     style="@style/InCallRoundTouchButton"
-                    android:src="@drawable/ic_in_call_touch_round_merge_call" />
+                    android:src="@drawable/ic_in_call_touch_round_merge_call"
+                    android:contentDescription="@string/onscreenMergeCallsText" />
             <TextView
                 style="@style/InCallRoundButtonLabel"
                 android:text="@string/onscreenMergeCallsText" />
@@ -102,9 +105,11 @@
 
         <!-- DTMF dialpad shown in the upper part of the screen
              (above the main cluster of buttons.) -->
-        <!-- TODO: this should be a ViewStub, and should only get inflated
-             when first needed. -->
-        <include layout="@layout/non_drawer_dialpad"/>
+        <ViewStub android:id="@+id/non_drawer_dialpad_stub"
+                  android:layout="@layout/non_drawer_dialpad"
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  />
 
         <!-- Main cluster of onscreen buttons on the lower part of the screen. -->
         <LinearLayout android:id="@+id/bottomButtons"
@@ -177,7 +182,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/onscreenEndCallText"
                         android:drawableTop="@drawable/ic_in_call_touch_end"
-                        android:textColor="@color/incall_endButtonLabel"
+                        android:textColor="@color/end_call_button_text"
                         />
 
                 <!-- "Dialpad" -->

@@ -52,12 +52,14 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewStub;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SlidingDrawer;
 import android.widget.TextView;
@@ -302,7 +304,7 @@ public class InCallScreen extends Activity
     private boolean mIsDestroyed = false;
     private boolean mIsForegroundActivity = false;
 
-    // For use with CDMA Pause/Wait dialogs
+    // For use with Pause/Wait dialogs
     private String mPostDialStrAfterPause;
     private boolean mPauseInProgress = false;
 
@@ -567,42 +569,6 @@ public class InCallScreen extends Activity
 
         initInCallScreen();
 
-        // Create the dtmf dialer.  The dialer view we use depends on the
-        // current platform:
-        //
-        // - On non-prox-sensor devices, it's the dialpad contained inside
-        //   a SlidingDrawer widget (see dtmf_twelve_key_dialer.xml).
-        //
-        // - On "full touch UI" devices, it's the compact non-sliding
-        //   dialpad that appears on the upper half of the screen,
-        //   above the main cluster of InCallTouchUi buttons
-        //   (see non_drawer_dialpad.xml).
-        //
-        // TODO: These should both be ViewStubs, and right here we should
-        // inflate one or the other.  (Also, while doing that, let's also
-        // move this block of code over to initInCallScreen().)
-        //
-        SlidingDrawer dialerDrawer;
-        if (isTouchUiEnabled()) {
-            // This is a "full touch" device.
-            mDialerView = (DTMFTwelveKeyDialerView) findViewById(R.id.non_drawer_dtmf_dialer);
-            if (DBG) log("- Full touch device!  Found dialerView: " + mDialerView);
-            dialerDrawer = null;  // No SlidingDrawer used on this device.
-        } else {
-            // Use the old-style dialpad contained within the SlidingDrawer.
-            mDialerView = (DTMFTwelveKeyDialerView) findViewById(R.id.dtmf_dialer);
-            if (DBG) log("- Using SlidingDrawer-based dialpad.  Found dialerView: " + mDialerView);
-            dialerDrawer = (SlidingDrawer) findViewById(R.id.dialer_container);
-            if (DBG) log("  ...and the SlidingDrawer: " + dialerDrawer);
-        }
-        // Sanity-check that (regardless of the device) at least the
-        // dialer view is present:
-        if (mDialerView == null) {
-            Log.e(LOG_TAG, "onCreate: couldn't find dialerView", new IllegalStateException());
-        }
-        // Finally, create the DTMFTwelveKeyDialer instance.
-        mDialer = new DTMFTwelveKeyDialer(this, mDialerView, dialerDrawer);
-
         registerForPhoneStates();
 
         // No need to change wake state here; that happens in onResume() when we
@@ -684,6 +650,7 @@ public class InCallScreen extends Activity
 
         // Check for any failures that happened during onCreate() or onNewIntent().
         if (DBG) log("- onResume: initial status = " + mInCallInitialStatus);
+        boolean handledStartupError = false;
         if (mInCallInitialStatus != InCallInitStatus.SUCCESS) {
             if (DBG) log("- onResume: failure during startup: " + mInCallInitialStatus);
 
@@ -691,6 +658,7 @@ public class InCallScreen extends Activity
             // something more specific to let the user deal with the
             // problem.
             handleStartupError(mInCallInitialStatus);
+            handledStartupError = true;
 
             // But it *is* OK to continue with the rest of onResume(),
             // since any further setup steps (like updateScreen() and the
@@ -710,10 +678,8 @@ public class InCallScreen extends Activity
 
         takeKeyEvents(true);
 
-        boolean phoneIsCdma = (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA);
-
         boolean inOtaCall = false;
-        if (phoneIsCdma) {
+        if (TelephonyCapabilities.supportsOtasp(mPhone)) {
             inOtaCall = initOtaState();
         }
         if (!inOtaCall) {
@@ -729,13 +695,38 @@ public class InCallScreen extends Activity
 
         InCallInitStatus status = syncWithPhoneState();
         if (status != InCallInitStatus.SUCCESS) {
-            if (DBG) log("- syncWithPhoneState failed! status = " + status);
+            if (DBG) log("- onResume: syncWithPhoneState failed! status = " + status);
             // Couldn't update the UI, presumably because the phone is totally
-            // idle.  But don't endInCallScreenSession immediately, since we might still
-            // have an error dialog up that the user needs to see.
-            // (And in that case, the error dialog is responsible for calling
-            // endInCallScreenSession when the user dismisses it.)
-        } else if (phoneIsCdma) {
+            // idle.
+
+            if (handledStartupError) {
+                // Do NOT bail out of the in-call UI, since there's
+                // presumably a dialog visible right now (see the call to
+                // handleStartupError() above.)
+                //
+                // In this case, stay here for now, and we'll eventually
+                // leave the InCallScreen when the user presses the
+                // dialog's OK button (see bailOutAfterErrorDialog()).
+                Log.i(LOG_TAG, "  ==> syncWithPhoneState failed, but staying here anyway.");
+            } else {
+                // The phone is idle, and we did NOT handle a
+                // startup error during this pass thru onResume.
+                //
+                // This basically means that we're being resumed because of
+                // some action *other* than a new intent.  (For example,
+                // the user pressing POWER to wake up the device, causing
+                // the InCallScreen to come back to the foreground.)
+                //
+                // In this scenario we do NOT want to stay here on the
+                // InCallScreen: we're not showing any useful info to the
+                // user (like a dialog), and the in-call UI itself is
+                // useless if there's no active call.  So bail out.
+                Log.i(LOG_TAG, "  ==> syncWithPhoneState failed; bailing out!");
+                dismissAllDialogs();
+                endInCallScreenSession();
+                return;
+            }
+        } else if (TelephonyCapabilities.supportsOtasp(mPhone)) {
             if (mInCallScreenMode == InCallScreenMode.OTA_NORMAL ||
                     mInCallScreenMode == InCallScreenMode.OTA_ENDED) {
                 mDialer.setHandleVisible(false);
@@ -1034,26 +1025,18 @@ public class InCallScreen extends Activity
         if (!mRegisteredForPhoneStates) {
             mPhone.registerForPreciseCallStateChanged(mHandler, PHONE_STATE_CHANGED, null);
             mPhone.registerForDisconnect(mHandler, PHONE_DISCONNECT, null);
-            int phoneType = mPhone.getPhoneType();
-            if (phoneType == Phone.PHONE_TYPE_GSM) {
-                mPhone.registerForMmiInitiate(mHandler, PhoneApp.MMI_INITIATE, null);
+            mPhone.registerForMmiInitiate(mHandler, PhoneApp.MMI_INITIATE, null);
 
-                // register for the MMI complete message.  Upon completion,
-                // PhoneUtils will bring up a system dialog instead of the
-                // message display class in PhoneUtils.displayMMIComplete().
-                // We'll listen for that message too, so that we can finish
-                // the activity at the same time.
-                mPhone.registerForMmiComplete(mHandler, PhoneApp.MMI_COMPLETE, null);
-            } else if (phoneType == Phone.PHONE_TYPE_CDMA) {
-                if (DBG) log("Registering for Call Waiting.");
-                mPhone.registerForCallWaiting(mHandler, PHONE_CDMA_CALL_WAITING, null);
-            } else {
-                throw new IllegalStateException("Unexpected phone type: " + phoneType);
-            }
-
+            // register for the MMI complete message.  Upon completion,
+            // PhoneUtils will bring up a system dialog instead of the
+            // message display class in PhoneUtils.displayMMIComplete().
+            // We'll listen for that message too, so that we can finish
+            // the activity at the same time.
+            mPhone.registerForMmiComplete(mHandler, PhoneApp.MMI_COMPLETE, null);
+            mPhone.registerForCallWaiting(mHandler, PHONE_CDMA_CALL_WAITING, null);
             mPhone.setOnPostDialCharacter(mHandler, POST_ON_DIAL_CHARS, null);
             mPhone.registerForSuppServiceFailed(mHandler, SUPP_SERVICE_FAILED, null);
-            if (phoneType == Phone.PHONE_TYPE_CDMA) {
+            if (TelephonyCapabilities.supportsOtasp(mPhone)) {
                 mPhone.registerForCdmaOtaStatusChange(mHandler, EVENT_OTA_PROVISION_CHANGE, null);
             }
             mRegisteredForPhoneStates = true;
@@ -1072,6 +1055,11 @@ public class InCallScreen extends Activity
 
     /* package */ void updateAfterRadioTechnologyChange() {
         if (DBG) Log.d(LOG_TAG, "updateAfterRadioTechnologyChange()...");
+
+        // Reset the call screen since the calls cannot be transferred
+        // across radio technologies.
+        resetInCallScreenMode();
+
         // Unregister for all events from the old obsolete phone
         unregisterForPhoneStates();
 
@@ -1132,7 +1120,7 @@ public class InCallScreen extends Activity
         // InCallScreen UI started with Intent of ACTION_SHOW_ACTIVATION
         // to show OTA Activation screen at power up.
         if ((action.equals(ACTION_SHOW_ACTIVATION))
-                && ((mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA))) {
+                && (TelephonyCapabilities.supportsOtasp(mPhone))) {
             setInCallScreenMode(InCallScreenMode.OTA_NORMAL);
             if ((app.cdmaOtaProvisionData != null)
                     && (!app.cdmaOtaProvisionData.isOtaCallIntentProcessed)) {
@@ -1238,6 +1226,42 @@ public class InCallScreen extends Activity
 
         // Helper class to run the "Manage conference" UI
         mManageConferenceUtils = new ManageConferenceUtils(this, mPhone);
+
+        // Create the dtmf dialer.  The dialer view we use depends on the
+        // current platform:
+        //
+        // - On non-prox-sensor devices, it's the dialpad contained inside
+        //   a SlidingDrawer widget (see dtmf_twelve_key_dialer.xml).
+        //
+        // - On "full touch UI" devices, it's the compact non-sliding
+        //   dialpad that appears on the upper half of the screen,
+        //   above the main cluster of InCallTouchUi buttons
+        //   (see non_drawer_dialpad.xml).
+        //
+        SlidingDrawer dialerDrawer;
+        if (isTouchUiEnabled()) {
+            // This is a "full touch" device.
+            ViewStub stub = (ViewStub)findViewById(R.id.non_drawer_dialpad_stub);
+            stub.inflate();
+            mDialerView = (DTMFTwelveKeyDialerView) findViewById(R.id.non_drawer_dtmf_dialer);
+            if (DBG) log("- Full touch device!  Found dialerView: " + mDialerView);
+            dialerDrawer = null;  // No SlidingDrawer used on this device.
+        } else {
+            // Use the old-style dialpad contained within the SlidingDrawer.
+            ViewStub stub = (ViewStub)findViewById(R.id.dtmf_dialer_stub);
+            stub.inflate();
+            mDialerView = (DTMFTwelveKeyDialerView) findViewById(R.id.dtmf_dialer);
+            if (DBG) log("- Using SlidingDrawer-based dialpad.  Found dialerView: " + mDialerView);
+            dialerDrawer = (SlidingDrawer) findViewById(R.id.dialer_container);
+            if (DBG) log("  ...and the SlidingDrawer: " + dialerDrawer);
+        }
+        // Sanity-check that (regardless of the device) at least the
+        // dialer view is present:
+        if (mDialerView == null) {
+            Log.e(LOG_TAG, "onCreate: couldn't find dialerView", new IllegalStateException());
+        }
+        // Finally, create the DTMFTwelveKeyDialer instance.
+        mDialer = new DTMFTwelveKeyDialer(this, mDialerView, dialerDrawer);
     }
 
     /**
@@ -2034,17 +2058,19 @@ public class InCallScreen extends Activity
             if (VDBG) log("handlePostOnDialChar: state = " +
                     state + ", ch = " + ch);
 
-            int phoneType = mPhone.getPhoneType();
             switch (state) {
                 case STARTED:
-                    if (phoneType == Phone.PHONE_TYPE_CDMA) {
-                        mDialer.stopLocalToneCdma();
-                        if (mPauseInProgress) {
-                            showPausePromptDialogCDMA(c, mPostDialStrAfterPause);
-                        }
-                        mPauseInProgress = false;
-                        mDialer.startLocalToneCdma(ch);
+                    mDialer.stopLocalToneIfNeeded();
+                    if (mPauseInProgress) {
+                        /**
+                         * Note that on some devices, this will never happen,
+                         * because we will not ever enter the PAUSE state.
+                         */
+                        showPausePromptDialog(c, mPostDialStrAfterPause);
                     }
+                    mPauseInProgress = false;
+                    mDialer.startLocalToneIfNeeded(ch);
+
                     // TODO: is this needed, now that you can't actually
                     // type DTMF chars or dial directly from here?
                     // If so, we'd need to yank you out of the in-call screen
@@ -2053,35 +2079,28 @@ public class InCallScreen extends Activity
                     break;
 
                 case WAIT:
+                    // wait shows a prompt.
                     if (DBG) log("handlePostOnDialChars: show WAIT prompt...");
+                    mDialer.stopLocalToneIfNeeded();
                     String postDialStr = c.getRemainingPostDialString();
-                    if (phoneType == Phone.PHONE_TYPE_CDMA) {
-                        mDialer.stopLocalToneCdma();
-                        showWaitPromptDialogCDMA(c, postDialStr);
-                    } else if (phoneType == Phone.PHONE_TYPE_GSM) {
-                        showWaitPromptDialogGSM(c, postDialStr);
-                    } else {
-                        throw new IllegalStateException("Unexpected phone type: " + phoneType);
-                    }
+                    showWaitPromptDialog(c, postDialStr);
                     break;
 
                 case WILD:
                     if (DBG) log("handlePostOnDialChars: show WILD prompt");
+                    mDialer.stopLocalToneIfNeeded();
                     showWildPromptDialog(c);
                     break;
 
                 case COMPLETE:
-                    if (phoneType == Phone.PHONE_TYPE_CDMA) {
-                        mDialer.stopLocalToneCdma();
-                    }
+                    mDialer.stopLocalToneIfNeeded();
                     break;
 
                 case PAUSE:
-                    if (phoneType == Phone.PHONE_TYPE_CDMA) {
-                        mPostDialStrAfterPause = c.getRemainingPostDialString();
-                        mDialer.stopLocalToneCdma();
-                        mPauseInProgress = true;
-                    }
+                    // pauses for a brief period of time then continue dialing.
+                    mDialer.stopLocalToneIfNeeded();
+                    mPostDialStrAfterPause = c.getRemainingPostDialString();
+                    mPauseInProgress = true;
                     break;
 
                 default:
@@ -2090,52 +2109,12 @@ public class InCallScreen extends Activity
         }
     }
 
-    private void showWaitPromptDialogGSM(final Connection c, String postDialStr) {
-        if (DBG) log("showWaitPromptDialogGSM: '" + postDialStr + "'...");
-
-        Resources r = getResources();
-        StringBuilder buf = new StringBuilder();
-        buf.append(r.getText(R.string.wait_prompt_str));
-        buf.append(postDialStr);
-
-        // if (DBG) log("- mWaitPromptDialog = " + mWaitPromptDialog);
-        if (mWaitPromptDialog != null) {
-            if (DBG) log("- DISMISSING mWaitPromptDialog.");
-            mWaitPromptDialog.dismiss();  // safe even if already dismissed
-            mWaitPromptDialog = null;
-        }
-
-        mWaitPromptDialog = new AlertDialog.Builder(this)
-                .setMessage(buf.toString())
-                .setPositiveButton(R.string.send_button, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int whichButton) {
-                            if (DBG) log("handle WAIT_PROMPT_CONFIRMED, proceed...");
-                            c.proceedAfterWaitChar();
-                            PhoneApp.getInstance().pokeUserActivity();
-                        }
-                    })
-                .setOnCancelListener(new DialogInterface.OnCancelListener() {
-                        public void onCancel(DialogInterface dialog) {
-                            if (DBG) log("handle POST_DIAL_CANCELED!");
-                            c.cancelPostDial();
-                            PhoneApp.getInstance().pokeUserActivity();
-                        }
-                    })
-                .create();
-        mWaitPromptDialog.getWindow().addFlags(
-                WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-        mWaitPromptDialog.show();
-    }
-
     /**
-     * Processes the CDMA specific requirements of a WAIT character in a
-     * dial string.
-     *
      * Pop up an alert dialog with OK and Cancel buttons to allow user to
      * Accept or Reject the WAIT inserted as part of the Dial string.
      */
-    private void showWaitPromptDialogCDMA(final Connection c, String postDialStr) {
-        if (DBG) log("showWaitPromptDialogCDMA: '" + postDialStr + "'...");
+    private void showWaitPromptDialog(final Connection c, String postDialStr) {
+        if (DBG) log("showWaitPromptDialogChoice: '" + postDialStr + "'...");
 
         Resources r = getResources();
         StringBuilder buf = new StringBuilder();
@@ -2167,6 +2146,7 @@ public class InCallScreen extends Activity
                 .create();
         mWaitPromptDialog.getWindow().addFlags(
                 WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+
         mWaitPromptDialog.show();
     }
 
@@ -2174,7 +2154,7 @@ public class InCallScreen extends Activity
      * Pop up an alert dialog which waits for 2 seconds for each P (Pause) Character entered
      * as part of the Dial String.
      */
-    private void showPausePromptDialogCDMA(final Connection c, String postDialStrAfterPause) {
+    private void showPausePromptDialog(final Connection c, String postDialStrAfterPause) {
         Resources r = getResources();
         StringBuilder buf = new StringBuilder();
         buf.append(r.getText(R.string.pause_prompt_str));
@@ -2378,13 +2358,13 @@ public class InCallScreen extends Activity
                      && (fgLatestConnection.getPostDialState() == Connection.PostDialState.WAIT)) {
                     if(DBG) log("show the Wait dialog for CDMA");
                     postDialStr = fgLatestConnection.getRemainingPostDialString();
-                    showWaitPromptDialogCDMA(fgLatestConnection, postDialStr);
+                    showWaitPromptDialog(fgLatestConnection, postDialStr);
                 }
             } else if (phoneType == Phone.PHONE_TYPE_GSM) {
                 for (Connection cn : fgConnections) {
                     if ((cn != null) && (cn.getPostDialState() == Connection.PostDialState.WAIT)) {
                         postDialStr = cn.getRemainingPostDialString();
-                        showWaitPromptDialogGSM(cn, postDialStr);
+                        showWaitPromptDialog(cn, postDialStr);
                     }
                 }
             } else {
@@ -2413,27 +2393,33 @@ public class InCallScreen extends Activity
         // Make sure the Phone is "in use".  (If not, we shouldn't be on
         // this screen in the first place.)
 
-        // Need to treat running MMI codes as a connection as well.
-        // Do not check for getPendingMmiCodes when phone is a CDMA phone
-        int phoneType = mPhone.getPhoneType();
-
-        if ((phoneType == Phone.PHONE_TYPE_CDMA)
+        // An active or just-ended OTA call counts as "in use".
+        if (TelephonyCapabilities.supportsOtasp(mPhone)
                 && ((mInCallScreenMode == InCallScreenMode.OTA_NORMAL)
-                || (mInCallScreenMode == InCallScreenMode.OTA_ENDED))) {
+                    || (mInCallScreenMode == InCallScreenMode.OTA_ENDED))) {
             // Even when OTA Call ends, need to show OTA End UI,
             // so return Success to allow UI update.
             return InCallInitStatus.SUCCESS;
         }
 
-        if ((phoneType == Phone.PHONE_TYPE_CDMA)
-                || !mForegroundCall.isIdle() || !mBackgroundCall.isIdle() || !mRingingCall.isIdle()
-                || !mPhone.getPendingMmiCodes().isEmpty()) {
+        // If an MMI code is running that also counts as "in use".
+        //
+        // TODO: We currently only call getPendingMmiCodes() for GSM
+        //   phones.  (The code's been that way all along.)  But CDMAPhone
+        //   does in fact implement getPendingMmiCodes(), so should we
+        //   check that here regardless of the phone type?
+        boolean hasPendingMmiCodes =
+                (mPhone.getPhoneType() == Phone.PHONE_TYPE_GSM)
+                && !mPhone.getPendingMmiCodes().isEmpty();
+
+        if (!mForegroundCall.isIdle() || !mBackgroundCall.isIdle() || !mRingingCall.isIdle()
+                || hasPendingMmiCodes) {
             if (VDBG) log("syncWithPhoneState: it's ok to be here; update the screen...");
             updateScreen();
             return InCallInitStatus.SUCCESS;
         }
 
-        if (DBG) log("syncWithPhoneState: phone is idle; we shouldn't be here!");
+        Log.i(LOG_TAG, "syncWithPhoneState: phone is idle (shouldn't be here)");
         return InCallInitStatus.PHONE_NOT_IN_USE;
     }
 
@@ -2552,7 +2538,7 @@ public class InCallScreen extends Activity
 
         final PhoneApp app = PhoneApp.getInstance();
 
-        if ((mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) && (mPhone.isOtaSpNumber(number))) {
+        if ((TelephonyCapabilities.supportsOtasp(mPhone)) && (mPhone.isOtaSpNumber(number))) {
             if (DBG) log("placeCall: isOtaSpNumber() returns true");
             setInCallScreenMode(InCallScreenMode.OTA_NORMAL);
             if (app.cdmaOtaProvisionData != null) {
@@ -2569,15 +2555,8 @@ public class InCallScreen extends Activity
         int callStatus;
         Uri contactUri = intent.getData();
 
-        if (null != mProviderGatewayUri &&
-            !(isEmergencyNumber || isEmergencyIntent) &&
-            PhoneUtils.isRoutableViaGateway(number)) {  // Filter out MMI, OTA and other codes.
-
-            callStatus = PhoneUtils.placeCallVia(
-                this, mPhone, number, contactUri, mProviderGatewayUri);
-        } else {
-            callStatus = PhoneUtils.placeCall(mPhone, number, contactUri);
-        }
+        callStatus = PhoneUtils.placeCall(this, mPhone, number, contactUri,
+                (isEmergencyNumber || isEmergencyIntent), mProviderGatewayUri);
 
         switch (callStatus) {
             case PhoneUtils.CALL_STATUS_DIALED:
@@ -3190,8 +3169,10 @@ public class InCallScreen extends Activity
                                                          mProviderAddress);
 
             TextView message = (TextView) findViewById(R.id.callingVia);
-            message.setCompoundDrawablesWithIntrinsicBounds(mProviderIcon, null, null, null);
             message.setText(text);
+
+            ImageView image = (ImageView) findViewById(R.id.callingViaIcon);
+            image.setImageDrawable(mProviderIcon);
 
             overlay.setVisibility(View.VISIBLE);
 
@@ -4682,7 +4663,7 @@ public class InCallScreen extends Activity
             return false;
         }
 
-        if (mPhone.getPhoneType() != Phone.PHONE_TYPE_CDMA) {
+        if (!TelephonyCapabilities.supportsOtasp(mPhone)) {
             return false;
         }
 
@@ -4765,7 +4746,7 @@ public class InCallScreen extends Activity
     private boolean initOtaState() {
         boolean inOtaCall = false;
 
-        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+        if (TelephonyCapabilities.supportsOtasp(mPhone)) {
             final PhoneApp app = PhoneApp.getInstance();
 
             if ((app.cdmaOtaScreenState == null) || (app.cdmaOtaProvisionData == null)) {
@@ -4803,7 +4784,7 @@ public class InCallScreen extends Activity
 
     public void updateMenuItems() {
         if (mInCallMenu != null) {
-            boolean okToShowMenu =  mInCallMenu.updateItems(PhoneApp.getInstance().phone);
+            boolean okToShowMenu =  mInCallMenu.updateItems(PhoneApp.getPhone());
             if (!okToShowMenu) {
                 dismissMenu(true);
             }

@@ -1,11 +1,9 @@
 package com.android.phone2;
 
-import static com.android.phone2.TimeConsumingPreferenceActivity.EXCEPTION_ERROR;
 import static com.android.phone2.TimeConsumingPreferenceActivity.RESPONSE_ERROR;
-
+import com.android.internal.telephony.CommandException;
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
 
 import android.content.Context;
 import android.os.AsyncResult;
@@ -29,7 +27,7 @@ public class CLIRListPreference extends ListPreference {
     public CLIRListPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        phone = PhoneFactory.getDefaultPhone();
+        phone = PhoneApp.getPhone();
     }
 
     public CLIRListPreference(Context context) {
@@ -133,8 +131,7 @@ public class CLIRListPreference extends ListPreference {
             clirArray = null;
             if (ar.exception != null) {
                 if (DBG) Log.d(LOG_TAG, "handleGetCLIRResponse: ar.exception="+ar.exception);
-                setEnabled(false);
-                tcpListener.onError(CLIRListPreference.this, EXCEPTION_ERROR);
+                tcpListener.onException(CLIRListPreference.this, (CommandException) ar.exception);
             } else if (ar.userObj instanceof Throwable) {
                 tcpListener.onError(CLIRListPreference.this, RESPONSE_ERROR);
             } else {

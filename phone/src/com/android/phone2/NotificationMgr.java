@@ -84,8 +84,8 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
     private StatusBarManager mStatusBar;
     private StatusBarMgr mStatusBarMgr;
     private Toast mToast;
-    private IBinder mSpeakerphoneIcon;
-    private IBinder mMuteIcon;
+    private boolean mShowingSpeakerphoneIcon;
+    private boolean mShowingMuteIcon;
 
     // used to track the missed call counter, default to 0.
     private int mNumberMissedCalls = 0;
@@ -433,16 +433,16 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
     }
 
     void notifySpeakerphone() {
-        if (mSpeakerphoneIcon == null) {
-            mSpeakerphoneIcon = mStatusBar.addIcon("speakerphone",
-                    android.R.drawable.stat_sys_speakerphone, 0);
+        if (!mShowingSpeakerphoneIcon) {
+            mStatusBar.setIcon("speakerphone", android.R.drawable.stat_sys_speakerphone, 0);
+            mShowingSpeakerphoneIcon = true;
         }
     }
 
     void cancelSpeakerphone() {
-        if (mSpeakerphoneIcon != null) {
-            mStatusBar.removeIcon(mSpeakerphoneIcon);
-            mSpeakerphoneIcon = null;
+        if (mShowingSpeakerphoneIcon) {
+            mStatusBar.removeIcon("speakerphone");
+            mShowingSpeakerphoneIcon = false;
         }
     }
 
@@ -463,15 +463,16 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
     }
 
     void notifyMute() {
-        if (mMuteIcon == null) {
-            mMuteIcon = mStatusBar.addIcon("mute", android.R.drawable.stat_notify_call_mute, 0);
+        if (mShowingMuteIcon) {
+            mStatusBar.setIcon("mute", android.R.drawable.stat_notify_call_mute, 0);
+            mShowingMuteIcon = true;
         }
     }
 
     void cancelMute() {
-        if (mMuteIcon != null) {
-            mStatusBar.removeIcon(mMuteIcon);
-            mMuteIcon = null;
+        if (mShowingMuteIcon) {
+            mStatusBar.removeIcon("mute");
+            mShowingMuteIcon = false;
         }
     }
 
@@ -502,9 +503,7 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
 
         // Display the appropriate "in-call" icon in the status bar,
         // which depends on the current phone and/or bluetooth state.
-
-
-        boolean enhancedVoicePrivacy = PhoneApp.getInstance().notifier.getCdmaVoicePrivacyState();
+        boolean enhancedVoicePrivacy = PhoneApp.getInstance().notifier.getVoicePrivacyState();
         if (DBG) log("updateInCallNotification: enhancedVoicePrivacy = " + enhancedVoicePrivacy);
 
         if (!hasActiveCall && hasHoldingCall) {
@@ -749,7 +748,7 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
                 }
             }
 
-            if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+            if (TelephonyCapabilities.supportsVoiceMessageCount(mPhone)) {
                 int vmCount = mPhone.getVoiceMessageCount();
                 String titleFormat = mContext.getString(R.string.notification_voicemail_title_count);
                 notificationTitle = String.format(titleFormat, vmCount);
@@ -815,7 +814,7 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
             if (showExpandedNotification) {
                 Intent intent = new Intent(Intent.ACTION_MAIN);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                intent.setClassName("com.android.phone",
+                intent.setClassName("com.android.phone2",
                         "com.android.phone2.CallFeaturesSetting");
 
                 notification = new Notification(
@@ -903,7 +902,7 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
                 Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         // Use NetworkSetting to handle the selection intent
-        intent.setComponent(new ComponentName("com.android.phone",
+        intent.setComponent(new ComponentName("com.android.phone2",
                 "com.android.phone2.NetworkSetting"));
         PendingIntent pi = PendingIntent.getActivity(mContext, 0, intent, 0);
 
@@ -926,7 +925,7 @@ public class NotificationMgr implements CallerInfoAsyncQuery.OnQueryCompleteList
      * @param serviceState Phone service state
      */
     void updateNetworkSelection(int serviceState) {
-        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_GSM) {
+        if (TelephonyCapabilities.supportsNetworkSelection(mPhone)) {
             // get the shared preference of network_selection.
             // empty is auto mode, otherwise it is the operator alpha name
             // in case there is no operator name, check the operator numeric

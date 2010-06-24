@@ -1,7 +1,10 @@
 package com.android.phone2;
 
-import static com.android.phone2.TimeConsumingPreferenceActivity.EXCEPTION_ERROR;
+import com.android.internal.telephony.CommandException;
+import com.android.internal.telephony.Phone;
+
 import static com.android.phone2.TimeConsumingPreferenceActivity.RESPONSE_ERROR;
+
 import android.content.Context;
 import android.os.AsyncResult;
 import android.os.Handler;
@@ -11,7 +14,6 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
 
 public class CallWaitingCheckBoxPreference extends CheckBoxPreference {
     private static final String LOG_TAG = "CallWaitingCheckBoxPreference";
@@ -24,7 +26,7 @@ public class CallWaitingCheckBoxPreference extends CheckBoxPreference {
     public CallWaitingCheckBoxPreference(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
 
-        phone = PhoneFactory.getDefaultPhone();
+        phone = PhoneApp.getPhone();
     }
 
     public CallWaitingCheckBoxPreference(Context context, AttributeSet attrs) {
@@ -86,9 +88,13 @@ public class CallWaitingCheckBoxPreference extends CheckBoxPreference {
             }
 
             if (ar.exception != null) {
-                if (DBG) Log.d(LOG_TAG, "handleGetCallWaitingResponse: ar.exception=" + ar.exception);
-                setEnabled(false);
-                if (tcpListener != null) tcpListener.onError(CallWaitingCheckBoxPreference.this, EXCEPTION_ERROR);
+                if (DBG) {
+                    Log.d(LOG_TAG, "handleGetCallWaitingResponse: ar.exception=" + ar.exception);
+                }
+                if (tcpListener != null) {
+                    tcpListener.onException(CallWaitingCheckBoxPreference.this,
+                            (CommandException)ar.exception);
+                }
             } else if (ar.userObj instanceof Throwable) {
                 if (tcpListener != null) tcpListener.onError(CallWaitingCheckBoxPreference.this, RESPONSE_ERROR);
             } else {

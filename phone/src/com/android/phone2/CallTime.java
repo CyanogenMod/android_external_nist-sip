@@ -194,7 +194,7 @@ public class CallTime extends Handler {
         if (PROFILE & sProfileState == PROFILE_STATE_READY) {
             // For now, we move away from temp directory in favor of
             // the application's data directory to store the trace
-            // information (/data/data/com.android.phone).
+            // information (/data/data/com.android.phone2).
             File file = PhoneApp.getInstance().getDir ("phoneTrace", Context.MODE_PRIVATE);
             if (file.exists() == false) {
                 file.mkdirs();

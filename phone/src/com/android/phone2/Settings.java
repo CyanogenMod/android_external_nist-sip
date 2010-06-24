@@ -35,7 +35,6 @@ import android.preference.PreferenceScreen;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 
@@ -48,17 +47,13 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
     // debug data
     private static final String LOG_TAG = "NetworkSettings";
     private static final boolean DBG = true;
-    public static final int REQUEST_CODE_EXIT_ECM         = 17;
+    public static final int REQUEST_CODE_EXIT_ECM = 17;
 
     //String keys for preference lookup
     private static final String BUTTON_DATA_ENABLED_KEY = "button_data_enabled_key";
     private static final String BUTTON_DATA_USAGE_KEY = "button_data_usage_key";
     private static final String BUTTON_PREFERED_NETWORK_MODE = "preferred_network_mode_key";
     private static final String BUTTON_ROAMING_KEY = "button_roaming_key";
-    private static final String BUTTON_CDMA_ROAMING_KEY = "cdma_roaming_mode_key";
-
-    private static final String BUTTON_GSM_UMTS_OPTIONS = "gsm_umts_options_key";
-    private static final String BUTTON_CDMA_OPTIONS = "cdma_options_key";
 
     static final int preferredNetworkMode = Phone.PREFERRED_NT_MODE;
 
@@ -66,7 +61,6 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
     private ListPreference mButtonPreferredNetworkMode;
     private CheckBoxPreference mButtonDataRoam;
     private CheckBoxPreference mButtonDataEnabled;
-    private CdmaRoamingListPreference mButtonCdmaRoam;
 
     private Preference mButtonDataUsage;
     private DataUsageListener mDataUsageListener;
@@ -77,14 +71,16 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
     private boolean mOkClicked;
 
     //GsmUmts options and Cdma options
-    GsmUmtsOptions gsmumtsOptions;
-    CdmaOptions cdmaOptions;
+    GsmUmtsOptions mGsmUmtsOptions;
+    CdmaOptions mCdmaOptions;
+
+    private Preference mClickedPreference;
 
 
     //This is a method implemented for DialogInterface.OnClickListener.
     //  Used to dismiss the dialogs when they come up.
     public void onClick(DialogInterface dialog, int which) {
-        if (which == DialogInterface.BUTTON1) {
+        if (which == DialogInterface.BUTTON_POSITIVE) {
             mPhone.setDataRoamingEnabled(true);
             mOkClicked = true;
         } else {
@@ -107,13 +103,17 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
      */
     @Override
     public boolean onPreferenceTreeClick(PreferenceScreen preferenceScreen, Preference preference) {
-        if (gsmumtsOptions != null &&
-                gsmumtsOptions.onPreferenceTreeClick(preferenceScreen, preference) == true) {
+        /** TODO: Refactor and get rid of the if's using subclasses */
+        if (mGsmUmtsOptions != null &&
+                mGsmUmtsOptions.preferenceTreeClick(preference) == true) {
             return true;
-        } else if (cdmaOptions != null &&
-                   cdmaOptions.onPreferenceTreeClick(preferenceScreen, preference) == true) {
+        } else if (mCdmaOptions != null &&
+                   mCdmaOptions.preferenceTreeClick(preference) == true) {
             if (Boolean.parseBoolean(
                     SystemProperties.get(TelephonyProperties.PROPERTY_INECM_MODE))) {
+
+                mClickedPreference = preference;
+
                 // In ECM mode launch ECM app dialog
                 startActivityForResult(
                     new Intent(TelephonyIntents.ACTION_SHOW_NOTICE_ECM_BLOCK_OTHERS, null),
@@ -127,8 +127,7 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
                     preferredNetworkMode);
             mButtonPreferredNetworkMode.setValue(Integer.toString(settingsNetworkMode));
             return true;
-        }
-        else if (preference == mButtonDataRoam) {
+        } else if (preference == mButtonDataRoam) {
             if (DBG) log("onPreferenceTreeClick: preference == mButtonDataRoam.");
 
             //normally called on the toggle click
@@ -143,8 +142,7 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
                         .setNegativeButton(android.R.string.no, this)
                         .show()
                         .setOnDismissListener(this);
-            }
-            else {
+            } else {
                 mPhone.setDataRoamingEnabled(false);
             }
             return true;
@@ -171,7 +169,7 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
 
         addPreferencesFromResource(R.xml.network_setting);
 
-        mPhone = PhoneFactory.getDefaultPhone();
+        mPhone = PhoneApp.getPhone();
         mHandler = new MyHandler();
 
         //get UI object references
@@ -193,22 +191,15 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
                     getContentResolver(),android.provider.Settings.Secure.PREFERRED_NETWORK_MODE,
                     preferredNetworkMode);
             mButtonPreferredNetworkMode.setValue(Integer.toString(settingsNetworkMode));
-            // The intent code that resided here in the past has been moved into the
-            // more conventional location in network_setting.xml
-
+            mCdmaOptions = new CdmaOptions(this, prefSet);
+            mGsmUmtsOptions = new GsmUmtsOptions(this, prefSet);
         } else {
             prefSet.removePreference(mButtonPreferredNetworkMode);
-            prefSet.removePreference(prefSet.findPreference(BUTTON_GSM_UMTS_OPTIONS));
-            prefSet.removePreference(prefSet.findPreference(BUTTON_CDMA_OPTIONS));
             int phoneType = mPhone.getPhoneType();
             if (phoneType == Phone.PHONE_TYPE_CDMA) {
-                addPreferencesFromResource(R.xml.cdma_options);
-                mButtonCdmaRoam =
-                    (CdmaRoamingListPreference) prefSet.findPreference(BUTTON_CDMA_ROAMING_KEY);
-                cdmaOptions = new CdmaOptions();
+                mCdmaOptions = new CdmaOptions(this, prefSet);
             } else if (phoneType == Phone.PHONE_TYPE_GSM) {
-                addPreferencesFromResource(R.xml.gsm_umts_options);
-                gsmumtsOptions = new GsmUmtsOptions();
+                mGsmUmtsOptions = new GsmUmtsOptions(this, prefSet);
             } else {
                 throw new IllegalStateException("Unexpected phone type: " + phoneType);
             }
@@ -457,8 +448,8 @@ public class Settings extends PreferenceActivity implements DialogInterface.OnCl
             Boolean isChoiceYes =
                 data.getBooleanExtra(EmergencyCallbackModeExitDialog.EXTRA_EXIT_ECM_RESULT, false);
             if (isChoiceYes) {
-                // If the phone exits from ECM mode, show the system selection Options
-                mButtonCdmaRoam.showDialog(null);
+                // If the phone exits from ECM mode, show the CDMA Options
+                mCdmaOptions.showDialog(mClickedPreference);
             } else {
                 // do nothing
             }

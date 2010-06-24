@@ -28,10 +28,9 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.TelephonyProperties;
 
-public class CdmaRoamingListPreference extends ListPreference {
+public class CdmaSystemSelectListPreference extends ListPreference {
 
     private static final String LOG_TAG = "CdmaRoamingListPreference";
     private static final boolean DBG = true;
@@ -39,16 +38,16 @@ public class CdmaRoamingListPreference extends ListPreference {
     private Phone mPhone;
     private MyHandler mHandler = new MyHandler();;
 
-    public CdmaRoamingListPreference(Context context, AttributeSet attrs) {
+    public CdmaSystemSelectListPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        mPhone = PhoneFactory.getDefaultPhone();
+        mPhone = PhoneApp.getPhone();
         mHandler = new MyHandler();
         mPhone.queryCdmaRoamingPreference(
                 mHandler.obtainMessage(MyHandler.MESSAGE_GET_ROAMING_PREFERENCE));
     }
 
-    public CdmaRoamingListPreference(Context context) {
+    public CdmaSystemSelectListPreference(Context context) {
         this(context, null);
     }
 
