@@ -298,7 +298,7 @@ public class SipSettings extends PreferenceActivity {
     private void registerProfile(SipProfile profile) {
         if (profile != null) {
             try {
-                mSipManager.openToReceiveCalls(profile, INCOMING_CALL_ACTION,
+                mSipManager.open(profile, INCOMING_CALL_ACTION,
                         createRegistrationListener());
             } catch (Exception e) {
                 Log.e(TAG, "register failed", e);

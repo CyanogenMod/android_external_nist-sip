@@ -244,8 +244,8 @@ public class SipCallSetup extends Activity implements OnClickListener {
                 mSipManager.register(myself.mProfile, 3600,
                         createRegistrationListener());
             } else {
-                mSipManager.openToReceiveCalls(myself.mProfile,
-                        INCOMING_CALL_ACTION, createRegistrationListener());
+                mSipManager.open(myself.mProfile, INCOMING_CALL_ACTION,
+                        createRegistrationListener());
             }
         } catch (Exception e) {
             Log.e(TAG, "register()", e);

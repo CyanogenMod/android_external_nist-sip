@@ -33,6 +33,7 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.text.TextUtils;
 import android.util.Log;
 
 import java.io.IOException;
@@ -80,16 +81,69 @@ class SipServiceImpl extends ISipService.Stub {
         mTimer = new WakeupTimer(context);
     }
 
-    public synchronized void openToReceiveCalls(SipProfile localProfile,
-            String incomingCallBroadcastAction,
-            ISipSessionListener listener) {
-        FLog.d(TAG, "openToReceiveCalls: " + localProfile.getUriString() + ": "
+    public synchronized SipProfile[] getListOfProfiles() {
+        SipProfile[] profiles = new SipProfile[mSipGroups.size()];
+        int i = 0;
+        for (SipSessionGroupExt group : mSipGroups.values()) {
+            profiles[i++] = duplicate(group.getLocalProfile());
+        }
+        return profiles;
+    }
+
+    private SipProfile duplicate(SipProfile p) {
+        try {
+            return new SipProfile.Builder(p.getUserName(), p.getSipDomain())
+                    .setProfileName(p.getProfileName())
+                    .setPassword("*")
+                    .setPort(p.getPort())
+                    .setProtocol(p.getProtocol())
+                    .setOutboundProxy(p.getProxyAddress())
+                    .setSendKeepAlive(p.getSendKeepAlive())
+                    .setAutoRegistration(p.getAutoRegistration())
+                    .setDisplayName("*")
+                    .build();
+        } catch (Exception e) {
+            Log.wtf(TAG, "duplicate()", e);
+            return null;
+        }
+    }
+
+    public void open(SipProfile localProfile) {
+        if (localProfile.getAutoRegistration()) {
+            openToReceiveCalls(localProfile);
+        } else {
+            openToMakeCalls(localProfile);
+        }
+    }
+
+    private void openToMakeCalls(SipProfile localProfile) {
+        try {
+            createGroup(localProfile);
+        } catch (SipException e) {
+            FLog.e(TAG, "openToMakeCalls()", e);
+            // TODO: how to send the exception back
+        }
+    }
+
+    private void openToReceiveCalls(SipProfile localProfile) {
+        open3(localProfile, SipManager.SIP_INCOMING_CALL_ACTION, null);
+    }
+
+    public synchronized void open3(SipProfile localProfile,
+            String incomingCallBroadcastAction, ISipSessionListener listener) {
+        if (TextUtils.isEmpty(incomingCallBroadcastAction)) {
+            throw new RuntimeException(
+                    "empty broadcast action for incoming call");
+        }
+        FLog.d(TAG, "open3: " + localProfile.getUriString() + ": "
                 + incomingCallBroadcastAction + ": " + listener);
         try {
             SipSessionGroupExt group = createGroup(localProfile,
                     incomingCallBroadcastAction, listener);
-            group.openToReceiveCalls();
-            if (isWifiOn()) grabWifiLock();
+            if (localProfile.getAutoRegistration()) {
+                group.openToReceiveCalls();
+                if (isWifiOn()) grabWifiLock();
+            }
         } catch (SipException e) {
             FLog.e(TAG, "openToReceiveCalls()", e);
             // TODO: how to send the exception back
@@ -99,6 +153,7 @@ class SipServiceImpl extends ISipService.Stub {
     public synchronized void close(String localProfileUri) {
         SipSessionGroupExt group = mSipGroups.remove(localProfileUri);
         if (group != null) {
+            notifyProfileRemoved(group.getLocalProfile());
             group.closeToNotReceiveCalls();
             if (isWifiOn() && !anyOpened()) releaseWifiLock();
         }
@@ -156,6 +211,7 @@ class SipServiceImpl extends ISipService.Stub {
         if (group == null) {
             group = new SipSessionGroupExt(localProfile, null, null);
             mSipGroups.put(key, group);
+            notifyProfileAdded(localProfile);
         }
         return group;
     }
@@ -173,8 +229,23 @@ class SipServiceImpl extends ISipService.Stub {
             group = new SipSessionGroupExt(localProfile,
                     incomingCallBroadcastAction, listener);
             mSipGroups.put(key, group);
+            notifyProfileAdded(localProfile);
         }
         return group;
+    }
+
+    private void notifyProfileAdded(SipProfile localProfile) {
+        Log.d(TAG, "notify: profile added: " + localProfile);
+        Intent intent = new Intent(SipManager.SIP_ADD_PHONE_ACTION);
+        intent.putExtra(SipManager.LOCAL_URI_KEY, localProfile.getUriString());
+        mContext.sendBroadcast(intent);
+    }
+
+    private void notifyProfileRemoved(SipProfile localProfile) {
+        Log.d(TAG, "notify: profile removed: " + localProfile);
+        Intent intent = new Intent(SipManager.SIP_REMOVE_PHONE_ACTION);
+        intent.putExtra(SipManager.LOCAL_URI_KEY, localProfile.getUriString());
+        mContext.sendBroadcast(intent);
     }
 
     private boolean anyOpened() {
@@ -273,6 +344,10 @@ class SipServiceImpl extends ISipService.Stub {
             mSipGroup = createSipSessionGroup(mLocalIp, localProfile);
             mIncomingCallBroadcastAction = incomingCallBroadcastAction;
             mAutoRegistration.setListener(listener);
+        }
+
+        public SipProfile getLocalProfile() {
+            return mSipGroup.getLocalProfile();
         }
 
         // network connectivity is tricky because network can be disconnected

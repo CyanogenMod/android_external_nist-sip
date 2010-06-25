@@ -24,7 +24,8 @@ import android.net.sip.SipProfile;
  * {@hide}
  */
 interface ISipService {
-    void openToReceiveCalls(in SipProfile localProfile,
+    void open(in SipProfile localProfile);
+    void open3(in SipProfile localProfile,
             String incomingCallBroadcastAction,
             in ISipSessionListener listener);
     void close(in String localProfileUri);
@@ -36,4 +37,6 @@ interface ISipService {
     ISipSession createSession(in SipProfile localProfile,
             in ISipSessionListener listener);
     ISipSession getPendingSession(String callId);
+
+    SipProfile[] getListOfProfiles();
 }
