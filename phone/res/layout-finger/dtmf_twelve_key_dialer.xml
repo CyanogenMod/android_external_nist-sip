@@ -77,7 +77,7 @@
     </LinearLayout>
 
     <!-- drawer content dialer view -->
-    <com.android.phone.DTMFTwelveKeyDialerView
+    <com.android.phone2.DTMFTwelveKeyDialerView
         xmlns:android="http://schemas.android.com/apk/res/android"
         android:id="@+id/dtmf_dialer"
         android:layout_width="match_parent"
@@ -113,6 +113,6 @@
             android:layout_width="match_parent"
             android:layout_weight="1"/>
 
-    </com.android.phone.DTMFTwelveKeyDialerView>
+    </com.android.phone2.DTMFTwelveKeyDialerView>
 
 </SlidingDrawer>

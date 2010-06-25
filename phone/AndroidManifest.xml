@@ -20,7 +20,7 @@
         android:sharedUserLabel="@string/dialerIconLabel"
 >
 
-    <original-package android:name="com.android.phone2" />
+    <original-package android:name="com.android.phone" />
 
     <protected-broadcast android:name="android.intent.action.SERVICE_STATE" />
     <protected-broadcast android:name="android.intent.action.RADIO_TECHNOLOGY" />
@@ -95,6 +95,11 @@
             <intent-filter>
                 <action android:name="com.android.phone2.EmergencyDialer.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.android.phone2.EmergencyDialer.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
             </intent-filter>
         </activity>
 

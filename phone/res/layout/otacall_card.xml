@@ -76,7 +76,7 @@
                       />
 
             <!-- DTMF Dialer section -->
-            <com.android.phone.DTMFTwelveKeyDialerView
+            <com.android.phone2.DTMFTwelveKeyDialerView
                     xmlns:android="http://schemas.android.com/apk/res/android"
                     android:id="@+id/otaDtmfDialer"
                     android:layout_width="match_parent"
@@ -92,7 +92,7 @@
                 <!-- Keypad section -->
                 <include layout="@layout/dialpad" />
 
-            </com.android.phone.DTMFTwelveKeyDialerView>
+            </com.android.phone2.DTMFTwelveKeyDialerView>
 
         </LinearLayout>
 

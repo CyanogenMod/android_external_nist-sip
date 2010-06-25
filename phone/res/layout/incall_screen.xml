@@ -38,7 +38,7 @@
                         >
             <!-- The "Call Card", which displays info about the currently
                  active phone call(s) on the device.  See call_card.xml. -->
-            <com.android.phone.CallCard android:id="@+id/callCard"
+            <com.android.phone2.CallCard android:id="@+id/callCard"
                                         android:layout_width="match_parent"
                                         android:layout_height="match_parent"
                 />
@@ -105,7 +105,7 @@
     <!-- In-call onscreen touch controls, used on some platforms. -->
     <!-- TODO: if this widget ends up being totally unused on some platforms,
          then this should probably be a ViewStub. -->
-    <com.android.phone.InCallTouchUi
+    <com.android.phone2.InCallTouchUi
         android:id="@+id/inCallTouchUi"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
