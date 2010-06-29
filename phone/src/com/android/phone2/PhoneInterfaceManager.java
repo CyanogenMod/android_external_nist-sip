@@ -135,7 +135,18 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
 
                 case CMD_END_CALL:
                     request = (MainThreadRequest) msg.obj;
-                    boolean hungUp = PhoneUtils.hangup(mPhone);
+                    boolean hungUp = false;
+                    int phoneType = mPhone.getPhoneType();
+                    if (phoneType == Phone.PHONE_TYPE_CDMA) {
+                        // CDMA: If the user presses the Power button we treat it as
+                        // ending the complete call session
+                        hungUp = PhoneUtils.hangupRingingAndActive(mPhone);
+                    } else if (phoneType == Phone.PHONE_TYPE_GSM) {
+                        // GSM: End the call as per the Phone state
+                        hungUp = PhoneUtils.hangup(mPhone);
+                    } else {
+                        throw new IllegalStateException("Unexpected phone type: " + phoneType);
+                    }
                     if (DBG) log("CMD_END_CALL: " + (hungUp ? "hung up!" : "no call to hang up"));
                     request.result = hungUp;
                     // Wake up the requesting thread
@@ -198,7 +209,7 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
     private void publish() {
         if (DBG) log("publish: " + this);
 
-        ServiceManager.addService("phone", this);
+        //ServiceManager.addService("phone", this);
     }
 
     //
@@ -654,8 +665,20 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
     /**
      * Returns true if CDMA provisioning needs to run.
      */
-    public boolean needsOtaServiceProvisioning() {
-        return mPhone.needsOtaServiceProvisioning();
+    public boolean getCdmaNeedsProvisioning() {
+        if (getActivePhoneType() == Phone.PHONE_TYPE_GSM) {
+            return false;
+        }
+
+        boolean needsProvisioning = false;
+        String cdmaMin = mPhone.getCdmaMin();
+        try {
+            needsProvisioning = OtaUtils.needsActivation(cdmaMin);
+        } catch (IllegalArgumentException e) {
+            // shouldn't get here unless hardware is misconfigured
+            Log.e(LOG_TAG, "CDMA MIN string " + ((cdmaMin == null) ? "was null" : "was too short"));
+        }
+        return needsProvisioning;
     }
 
     /**
@@ -692,8 +715,6 @@ public class PhoneInterfaceManager extends ITelephony.Stub {
                 return TelephonyManager.NETWORK_TYPE_EVDO_0;
             case ServiceState.RADIO_TECHNOLOGY_EVDO_A:
                 return TelephonyManager.NETWORK_TYPE_EVDO_A;
-            case ServiceState.RADIO_TECHNOLOGY_EVDO_B:
-                return TelephonyManager.NETWORK_TYPE_EVDO_B;
             default:
                 return TelephonyManager.NETWORK_TYPE_UNKNOWN;
         }

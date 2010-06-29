@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Telephony.Intents;
+import com.android.internal.telephony.SipPhoneFactory;
 import com.android.internal.telephony.Phone;
 import android.telephony.PhoneNumberUtils;
 import android.util.Log;
@@ -198,23 +199,43 @@ public class SpecialCharSequenceMgr {
     static private boolean handleIMEIDisplay(Context context,
                                              String input) {
         if (input.equals(MMI_IMEI_DISPLAY)) {
-            showDeviceIdPanel(context);
-            return true;
+            int phoneType = PhoneApp.getInstance().phone.getPhoneType();
+            if (phoneType == Phone.PHONE_TYPE_CDMA) {
+                showMEIDPanel(context);
+                return true;
+            } else if (phoneType == Phone.PHONE_TYPE_GSM) {
+                showIMEIPanel(context);
+                return true;
+            }
         }
 
         return false;
     }
 
-    static private void showDeviceIdPanel(Context context) {
-        if (DBG) log("showDeviceIdPanel()...");
+    // TODO: showIMEIPanel and showMEIDPanel are almost cut and paste
+    // clones. Refactor.
+    static private void showIMEIPanel(Context context) {
+        if (DBG) log("showIMEIPanel");
 
-        Phone phone = PhoneApp.getPhone();
-        int labelId = TelephonyCapabilities.getDeviceIdLabel(phone);
-        String deviceId = phone.getDeviceId();
+        String imeiStr = SipPhoneFactory.getDefaultPhone().getDeviceId();
 
         AlertDialog alert = new AlertDialog.Builder(context)
-                .setTitle(labelId)
-                .setMessage(deviceId)
+                .setTitle(R.string.imei)
+                .setMessage(imeiStr)
+                .setPositiveButton(R.string.ok, null)
+                .setCancelable(false)
+                .show();
+        alert.getWindow().setType(WindowManager.LayoutParams.TYPE_PRIORITY_PHONE);
+    }
+
+    static private void showMEIDPanel(Context context) {
+        if (DBG) log("showMEIDPanel");
+
+        String meidStr = SipPhoneFactory.getDefaultPhone().getDeviceId();
+
+        AlertDialog alert = new AlertDialog.Builder(context)
+                .setTitle(R.string.meid)
+                .setMessage(meidStr)
                 .setPositiveButton(R.string.ok, null)
                 .setCancelable(false)
                 .show();

@@ -48,13 +48,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 /**
- * TODO: This is Over The Air Service Provisioning (OTASP)
- *       A better name would be OtaspUtils.java.
- *
- * TODO: OTASP could UI may be substantially different on
- *       future devices, and may not necessarily be built-in
- *       to the InCallScreen.
- *
  * Handles all OTA Call related logic and UI functionality.
  * The InCallScreen interacts with this class to perform an OTA Call.
  *
@@ -65,6 +58,8 @@ import android.widget.TextView;
  */
 public class OtaUtils {
     private static final String LOG_TAG = "OtaUtils";
+    private static final String UNACTIVATED_MIN2_VALUE = "000000";
+    private static final String UNACTIVATED_MIN_VALUE = "1111110111";
     private static final boolean DBG = (PhoneApp.DBG_LEVEL >= 1);
 
     public static final int OTA_SHOW_ACTIVATION_SCREEN_OFF = 0;
@@ -150,6 +145,22 @@ public class OtaUtils {
     }
 
     /**
+     * Returns true if the phone needs activation.
+     *
+     * @param minString the phone's MIN configuration string
+     * @return true if phone needs activation
+     * @throws OtaConfigurationException if the string is invalid
+     */
+    public static boolean needsActivation(String minString) throws IllegalArgumentException {
+        if (minString == null || (minString.length() < 6)) {
+            throw new IllegalArgumentException();
+        }
+        return (minString.equals(UNACTIVATED_MIN_VALUE)
+                || minString.substring(0,6).equals(UNACTIVATED_MIN2_VALUE))
+                || SystemProperties.getBoolean("test_cdma_setup", false);
+    }
+
+    /**
      * Starts the OTA provisioning call.  If the MIN isn't available yet, it returns false and adds
      * an event to return the request to the calling app when it becomes available.
      *
@@ -173,9 +184,20 @@ public class OtaUtils {
             phone.registerForSubscriptionInfoReady(handler, request, null);
             return false;
         }
-        phone.unregisterForSubscriptionInfoReady(handler);
 
-        boolean phoneNeedsActivation = phone.needsOtaServiceProvisioning();
+        phone.unregisterForSubscriptionInfoReady(handler);
+        String min = phone.getCdmaMin();
+
+        if (DBG) log("min_string: " + min);
+
+        boolean phoneNeedsActivation = false;
+        try {
+            phoneNeedsActivation = needsActivation(min);
+        } catch (IllegalArgumentException e) {
+            if (DBG) log("invalid MIN string, exit");
+            return true; // If the MIN string is wrong, there's nothing else we can do.
+        }
+
         if (DBG) log("phoneNeedsActivation is set to " + phoneNeedsActivation);
 
         int otaShowActivationScreen = context.getResources().getInteger(
@@ -407,7 +429,7 @@ public class OtaUtils {
 
     /**
      * Show either programming success dialog when OTA provisioning succeeds, or
-     * programming failure dialog when it fails. See {@link #otaShowProgramFailure}
+     * programming failure dialog when it fails. See {@link otaShowProgramFailure}
      * for more details.
      */
     public void otaShowSuccessFailure() {
@@ -991,7 +1013,7 @@ public class OtaUtils {
         Log.d(LOG_TAG, msg);
     }
 
-    private static boolean isCdmaPhone() {
-        return (PhoneApp.getPhone().getPhoneType() == Phone.PHONE_TYPE_CDMA);
+    public static boolean isCdmaPhone() {
+        return (PhoneApp.getInstance().phone.getPhoneType() == Phone.PHONE_TYPE_CDMA);
     }
 }

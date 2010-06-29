@@ -16,100 +16,42 @@
 
 package com.android.phone2;
 
-import android.os.SystemProperties;
+import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
-import android.text.TextUtils;
+
+import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.SipPhoneFactory;
 
 /**
  * List of Phone-specific settings screens.
  */
-public class CdmaOptions {
-    private static final String LOG_TAG = "CdmaOptions";
+public class CdmaOptions extends PreferenceActivity {
 
-    private CdmaSystemSelectListPreference mButtonCdmaSystemSelect;
-    private CdmaSubscriptionListPreference mButtonCdmaSubscription;
+    private CdmaRoamingListPreference mButtonCdmaRoam;
 
-    private static final String BUTTON_CDMA_SYSTEM_SELECT_KEY = "cdma_system_select_key";
-    private static final String BUTTON_CDMA_SUBSCRIPTION_KEY = "cdma_subscription_key";
+    private static final String BUTTON_CDMA_ROAMING_KEY = "cdma_roaming_mode_key";
 
-    private PreferenceActivity mPrefActivity;
-    private PreferenceScreen mPrefScreen;
+    @Override
+    protected void onCreate(Bundle icicle) {
+        super.onCreate(icicle);
 
-    public CdmaOptions(PreferenceActivity prefActivity, PreferenceScreen prefScreen) {
-        mPrefActivity = prefActivity;
-        mPrefScreen = prefScreen;
-        create();
-    }
+        addPreferencesFromResource(R.xml.cdma_options);
 
-    protected void create() {
-        mPrefActivity.addPreferencesFromResource(R.xml.cdma_options);
-
-        mButtonCdmaSystemSelect = (CdmaSystemSelectListPreference)mPrefScreen
-                .findPreference(BUTTON_CDMA_SYSTEM_SELECT_KEY);
-
-        mButtonCdmaSubscription = (CdmaSubscriptionListPreference)mPrefScreen
-                .findPreference(BUTTON_CDMA_SUBSCRIPTION_KEY);
-
-        mButtonCdmaSystemSelect.setEnabled(true);
-        if(deviceSupportsNvAndRuim()) {
-            log("Both NV and Ruim supported, ENABLE subscription type selection");
-            mButtonCdmaSubscription.setEnabled(true);
-        } else {
-            log("Both NV and Ruim NOT supported, REMOVE subscription type selection");
-            mPrefScreen.removePreference(mPrefScreen
-                                .findPreference(BUTTON_CDMA_SUBSCRIPTION_KEY));
+        PreferenceScreen prefSet = getPreferenceScreen();
+        mButtonCdmaRoam =
+                (CdmaRoamingListPreference) prefSet.findPreference(BUTTON_CDMA_ROAMING_KEY);
+        if (SipPhoneFactory.getDefaultPhone().getPhoneType() != Phone.PHONE_TYPE_CDMA) {
+            mButtonCdmaRoam.setEnabled(false);
         }
     }
 
-    private boolean deviceSupportsNvAndRuim() {
-        // retrieve the list of subscription types supported by device.
-        String subscriptionsSupported = SystemProperties.get("ril.subscription.types");
-        boolean nvSupported = false;
-        boolean ruimSupported = false;
-
-        log("deviceSupportsnvAnRum: prop=" + subscriptionsSupported);
-        if (!TextUtils.isEmpty(subscriptionsSupported)) {
-            // Searches through the comma-separated list for a match for "NV"
-            // and "RUIM" to update nvSupported and ruimSupported.
-            for (String subscriptionType : subscriptionsSupported.split(",")) {
-                subscriptionType = subscriptionType.trim();
-                if (subscriptionType.equalsIgnoreCase("NV")) {
-                    nvSupported = true;
-                }
-                if (subscriptionType.equalsIgnoreCase("RUIM")) {
-                    ruimSupported = true;
-                }
-            }
-        }
-
-        log("deviceSupportsnvAnRum: nvSupported=" + nvSupported +
-                " ruimSupported=" + ruimSupported);
-        return (nvSupported && ruimSupported);
-    }
-
-    public boolean preferenceTreeClick(Preference preference) {
-        if (preference.getKey().equals(BUTTON_CDMA_SYSTEM_SELECT_KEY)) {
-            log("preferenceTreeClick: return BUTTON_CDMA_ROAMING_KEY true");
-            return true;
-        }
-        if (preference.getKey().equals(BUTTON_CDMA_SUBSCRIPTION_KEY)) {
-            log("preferenceTreeClick: return CDMA_SUBSCRIPTION_KEY true");
+    @Override
+    public boolean onPreferenceTreeClick(PreferenceScreen preferenceScreen, Preference preference) {
+        if (preference.getKey().equals(BUTTON_CDMA_ROAMING_KEY)) {
             return true;
         }
         return false;
-    }
-
-    public void showDialog(Preference preference) {
-        if (preference.getKey().equals(BUTTON_CDMA_SYSTEM_SELECT_KEY)) {
-            mButtonCdmaSystemSelect.showDialog(null);
-        } else if (preference.getKey().equals(BUTTON_CDMA_SUBSCRIPTION_KEY)) {
-            mButtonCdmaSubscription.showDialog(null);
-        }
-    }
-
-    protected void log(String s) {
-        android.util.Log.d(LOG_TAG, s);
     }
 }

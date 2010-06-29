@@ -22,23 +22,19 @@ import com.android.internal.telephony.Connection;
 import com.android.internal.telephony.DriverCall;
 import com.android.internal.telephony.Phone;
 
+import android.net.sip.SipManager;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import javax.sip.SipException;
 
-/**
- * {@hide}
- */
-class SipCall extends Call {
-    /*************************** Instance Variables **************************/
+abstract class SipCallBase extends Call {
+    private static final int MAX_CONNECTIONS_PER_CALL = 5;
 
-    /*package*/ ArrayList<Connection> connections = new ArrayList<Connection>();
-    /*package*/ SipCallTracker owner;
+    protected List<Connection> connections = new ArrayList<Connection>();
+    /*package*/ //SipCallTracker owner;
 
-
-    /***************************** Class Methods *****************************/
-
-    static State
-    stateFromDCState (DriverCall.State dcState) {
+    private static State stateFromDCState (DriverCall.State dcState) {
         switch (dcState) {
             case ACTIVE:        return State.ACTIVE;
             case HOLDING:       return State.HOLDING;
@@ -51,11 +47,9 @@ class SipCall extends Call {
     }
 
 
-    /****************************** Constructors *****************************/
-    /*package*/
-    SipCall (SipCallTracker owner) {
-        this.owner = owner;
-    }
+    //SipCall(SipPhone phone) {
+        //this.owner = owner;
+    //}
 
     public void dispose() {
     }
@@ -67,21 +61,8 @@ class SipCall extends Call {
         return connections;
     }
 
-    public Phone getPhone() {
-        //TODO
-        return null;
-    }
-
     public boolean isMultiparty() {
         return connections.size() > 1;
-    }
-
-    /** Please note: if this is the foreground call and a
-     *  background call exists, the background call will be resumed
-     *  because an AT+CHLD=1 will be sent
-     */
-    public void hangup() throws CallStateException {
-        owner.hangup(this);
     }
 
     public String toString() {
@@ -105,7 +86,7 @@ class SipCall extends Call {
     /**
      * Called by SipConnection when it has disconnected
      */
-    void connectionDisconnected(SipConnection conn) {
+    void connectionDisconnected(Connection conn) {
         if (state != State.DISCONNECTED) {
             /* If only disconnected connections remain, we are disconnected*/
 
@@ -127,7 +108,7 @@ class SipCall extends Call {
     }
 
 
-    /*package*/ void detach(SipConnection conn) {
+    /*package*/ void detach(Connection conn) {
         connections.remove(conn);
 
         if (connections.size() == 0) {
@@ -135,7 +116,7 @@ class SipCall extends Call {
         }
     }
 
-    /*package*/ boolean update (SipConnection conn, DriverCall dc) {
+    /*package*/ boolean update (Connection conn, DriverCall dc) {
         State newState;
         boolean changed = false;
 
@@ -154,7 +135,7 @@ class SipCall extends Call {
      * connections to be added via "conference"
      */
     /*package*/ boolean isFull() {
-        return connections.size() == SipCallTracker.MAX_CONNECTIONS_PER_CALL;
+        return connections.size() == MAX_CONNECTIONS_PER_CALL;
     }
 
     //***** Called from SipCallTracker
@@ -169,28 +150,19 @@ class SipCall extends Call {
         for (int i = 0, s = connections.size()
                 ; i < s; i++
         ) {
-            SipConnection cn = (SipConnection)connections.get(i);
+            SipConnectionBase cn = (SipConnectionBase)connections.get(i);
 
             cn.onHangupLocal();
         }
         state = State.DISCONNECTING;
     }
 
-    /**
-     * Called when it's time to clean up disconnected Connection objects
-     */
     void clearDisconnected() {
-        for (int i = connections.size() - 1 ; i >= 0 ; i--) {
-            SipConnection cn = (SipConnection)connections.get(i);
-
-            if (cn.getState() == State.DISCONNECTED) {
-                connections.remove(i);
-            }
+        for (Iterator<Connection> it = connections.iterator(); it.hasNext(); ) {
+            Connection c = it.next();
+            if (c.getState() == State.DISCONNECTED) it.remove();
         }
 
-        if (connections.size() == 0) {
-            state = State.IDLE;
-        }
+        if (connections.isEmpty()) state = State.IDLE;
     }
 }
-

@@ -136,8 +136,6 @@
         <!-- "End" button -->
         <Button android:id="@+id/otaEndButton"
                 android:text="@string/ota_call_end"
-                android:drawableLeft="@drawable/ic_btn_back"
-                android:drawablePadding="3dip"
                 style="@style/ccOtaSkipButton" />
     </RelativeLayout>
 
@@ -149,8 +147,6 @@
         <!-- "Next" button -->
         <Button android:id="@+id/otaNextButton"
                 android:text="@string/ota_next"
-                android:drawableRight="@drawable/ic_btn_next"
-                android:drawablePadding="10dip"
                 style="@style/ccOtaNextButton" />
 
         <!-- "Try Again" button -->

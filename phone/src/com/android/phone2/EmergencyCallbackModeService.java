@@ -36,7 +36,7 @@ import android.util.Log;
 
 import com.android.internal.telephony.cdma.CDMAPhone;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.SipPhoneFactory;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 
@@ -73,9 +73,9 @@ public class EmergencyCallbackModeService extends Service {
     @Override
     public void onCreate() {
         // Check if it is CDMA phone
-        if (PhoneFactory.getDefaultPhone().getPhoneType() != Phone.PHONE_TYPE_CDMA) {
+        if (SipPhoneFactory.getDefaultPhone().getPhoneType() != Phone.PHONE_TYPE_CDMA) {
             Log.e(LOG_TAG, "Error! Emergency Callback Mode not supported for " +
-                    PhoneFactory.getDefaultPhone().getPhoneName() + " phones");
+                    SipPhoneFactory.getDefaultPhone().getPhoneName() + " phones");
             stopSelf();
         }
 
@@ -88,7 +88,7 @@ public class EmergencyCallbackModeService extends Service {
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         // Register ECM timer reset notfication
-        mPhone = PhoneFactory.getDefaultPhone();
+        mPhone = SipPhoneFactory.getDefaultPhone();
         mPhone.registerForEcmTimerReset(mHandler, ECM_TIMER_RESET, null);
 
         startTimerNotification();

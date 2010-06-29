@@ -27,7 +27,7 @@ import android.os.Message;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.PhoneFactory;
+import com.android.internal.telephony.SipPhoneFactory;
 import android.util.Log;
 
 import java.util.ArrayList;
@@ -157,7 +157,7 @@ public class NetworkQueryService extends Service {
     @Override
     public void onCreate() {
         mState = QUERY_READY;
-        mPhone = PhoneFactory.getDefaultPhone();
+        mPhone = SipPhoneFactory.getDefaultPhone();
     }
     
     /**

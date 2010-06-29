@@ -31,10 +31,7 @@ import android.telephony.ServiceState;
 
 import com.android.internal.telephony.*;
 
-/**
- * {@hide}
- */
-public class SipConnection extends Connection {
+abstract class SipConnectionBase extends Connection {
     //***** Event Constants
     private static final int EVENT_DTMF_DONE = 1;
     private static final int EVENT_PAUSE_DONE = 2;
@@ -48,14 +45,10 @@ public class SipConnection extends Connection {
 
     private static final String LOG_TAG = "SIP_CONN";
 
-    //***** Instance Variables
-
-    SipCallTracker owner;
-    SipCall parent;
-
     private SipAudioCall mSipAudioCall;
 
-    final String address;     // MAY BE NULL!!!
+    // TODO
+    private String mAddress = null;     // MAY BE NULL!!!
     private String dialString;          // outgoing calls only
     private String postDialString;      // outgoing calls only
     private int nextPostDialChar;       // index into postDialString
@@ -88,11 +81,23 @@ public class SipConnection extends Connection {
 
     private Handler h;
 
-    /** This is probably an MT call that we first saw in a CLCC response */
-    SipConnection (Context context, DriverCall dc, SipCallTracker ct, int index) {
+    SipConnectionBase(String address, String calleeSipUri) {
+        mAddress = address;
+        dialString = calleeSipUri;
+
+        postDialString = PhoneNumberUtils.extractPostDialPortion(dialString);
+
+        isIncoming = false;
+        createTime = System.currentTimeMillis();
+    }
+
+    // TODO
+    // This is probably an MT call that we first saw in a CLCC response
+    /*
+    SipConnectionBase(Context context, DriverCall dc, SipCallTracker ct, int index) {
         owner = ct;
 
-        address = dc.number;
+        mAddress = dc.number;
 
         isIncoming = dc.isMT;
         createTime = System.currentTimeMillis();
@@ -100,17 +105,18 @@ public class SipConnection extends Connection {
 
         this.index = index;
 
-        parent = parentFromDCState (dc.state);
+        //parent = parentFromDCState (dc.state);
         parent.attach(this, dc);
     }
 
-    /** This is an MO call, created when dialing */
-    SipConnection (Context context, String dialString, SipCallTracker ct, SipCall parent) {
+    // TODO
+    // This is an MO call, created when dialing
+    SipConnectionBase(Context context, String dialString, SipCallTracker ct, SipCall parent) {
         owner = ct;
 
         this.dialString = dialString;
 
-        this.address = PhoneNumberUtils.extractNetworkPortionAlt(dialString);
+        this.mAddress = PhoneNumberUtils.extractNetworkPortionAlt(dialString);
         this.postDialString = PhoneNumberUtils.extractPostDialPortion(dialString);
 
         index = -1;
@@ -121,6 +127,7 @@ public class SipConnection extends Connection {
         this.parent = parent;
         parent.attachFake(this, SipCall.State.DIALING);
     }
+    */
 
     public void dispose() {
     }
@@ -141,15 +148,11 @@ public class SipConnection extends Connection {
         // no control over when they begin, so we might as well
 
         String cAddress = PhoneNumberUtils.stringFromStringAndTOA(c.number, c.TOA);
-        return isIncoming == c.isMT && equalsHandlesNulls(address, cAddress);
+        return isIncoming == c.isMT && equalsHandlesNulls(mAddress, cAddress);
     }
 
     public String getAddress() {
-        return address;
-    }
-
-    public SipCall getCall() {
-        return parent;
+        return mAddress;
     }
 
     public long getCreateTime() {
@@ -175,7 +178,7 @@ public class SipConnection extends Connection {
     }
 
     public long getHoldDurationMillis() {
-        if (getState() != SipCall.State.HOLDING) {
+        if (getState() != Call.State.HOLDING) {
             // If not holding, return 0
             return 0;
         } else {
@@ -195,27 +198,11 @@ public class SipConnection extends Connection {
         return isIncoming;
     }
 
-    public SipCall.State getState() {
+    public Call.State getState() {
         if (disconnected) {
-            return SipCall.State.DISCONNECTED;
+            return Call.State.DISCONNECTED;
         } else {
             return super.getState();
-        }
-    }
-
-    public void hangup() throws CallStateException {
-        if (!disconnected) {
-            owner.hangup(this);
-        } else {
-            throw new CallStateException ("disconnected");
-        }
-    }
-
-    public void separate() throws CallStateException {
-        if (!disconnected) {
-            owner.separate(this);
-        } else {
-            throw new CallStateException ("disconnected");
         }
     }
 
@@ -295,6 +282,8 @@ public class SipConnection extends Connection {
         mCause = DisconnectCause.LOCAL;
     }
 
+    protected abstract Phone getPhone();
+
     DisconnectCause disconnectCauseFromCode(int causeCode) {
         /**
          * See 22.001 Annex F.4 for mapping of cause codes
@@ -325,7 +314,7 @@ public class SipConnection extends Connection {
             case CallFailCause.ERROR_UNSPECIFIED:
             case CallFailCause.NORMAL_CLEARING:
             default:
-                SipPhone phone = owner.phone;
+                Phone phone = getPhone();
                 int serviceState = phone.getServiceState().getState();
                 if (serviceState == ServiceState.STATE_POWER_OFF) {
                     return DisconnectCause.POWER_OFF;
@@ -350,6 +339,7 @@ public class SipConnection extends Connection {
 
     /** Called when the radio indicates the connection has been disconnected */
     void onDisconnect(DisconnectCause cause) {
+        /*
         mCause = cause;
 
         if (!disconnected) {
@@ -368,6 +358,7 @@ public class SipConnection extends Connection {
                 parent.connectionDisconnected(this);
             }
         }
+        */
     }
 
     // Returns true if state has changed, false if nothing changed
@@ -380,9 +371,9 @@ public class SipConnection extends Connection {
 
         newParent = parentFromDCState(dc.state);
 
-        if (!equalsHandlesNulls(address, dc.number)) {
+        if (!equalsHandlesNulls(mAddress, dc.number)) {
             if (Phone.DEBUG_PHONE) log("update: phone # changed!");
-            address = dc.number;
+            mAddress = dc.number;
             changed = true;
         }
 
@@ -430,6 +421,7 @@ public class SipConnection extends Connection {
      * HOLDING in the backgroundCall
      */
     void fakeHoldBeforeDial() {
+        /*
         if (parent != null) {
             parent.detach(this);
         }
@@ -438,6 +430,7 @@ public class SipConnection extends Connection {
         parent.attachFake(this, SipCall.State.HOLDING);
 
         onStartedHolding();
+        */
     }
 
     int getSipIndex() throws CallStateException {
@@ -557,6 +550,8 @@ public class SipConnection extends Connection {
             }
         }
 
+        // TODO
+        /*
         postDialHandler = owner.phone.mPostDialHandler;
 
         Message notifyMessage;
@@ -575,6 +570,7 @@ public class SipConnection extends Connection {
             //Log.v("Sip", "##### processNextPostDialChar: send msg to postDialHandler, arg1=" + c);
             notifyMessage.sendToTarget();
         }
+        */
     }
 
 
@@ -582,11 +578,16 @@ public class SipConnection extends Connection {
      *  and outgoing calls
      */
     private boolean isConnectingInOrOut() {
+        // TODO
+        return false;
+        /*
         return parent == null || parent == owner.ringingCall
             || parent.state == SipCall.State.DIALING
             || parent.state == SipCall.State.ALERTING;
+            */
     }
 
+/*
     private SipCall parentFromDCState (DriverCall.State state) {
         switch (state) {
             case ACTIVE:
@@ -608,6 +609,7 @@ public class SipConnection extends Connection {
                 throw new RuntimeException("illegal call state: " + state);
         }
     }
+    */
 
     /**
      * Set post dial state and acquire wake lock while switching to "started"
@@ -637,11 +639,13 @@ public class SipConnection extends Connection {
         return Connection.PRESENTATION_ALLOWED;
     }
 
+    /*
     @Override
     public UUSInfo getUUSInfo() {
         // FIXME: what's this for SIP?
         return null;
     }
+    */
 
     private class MyHandler extends Handler {
         MyHandler(Looper l) {

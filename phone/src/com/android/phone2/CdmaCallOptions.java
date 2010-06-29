@@ -1,6 +1,7 @@
 package com.android.phone2;
 
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.SipPhoneFactory;
 
 import android.content.DialogInterface;
 import android.os.AsyncResult;
@@ -27,7 +28,7 @@ public class CdmaCallOptions extends PreferenceActivity {
         addPreferencesFromResource(R.xml.cdma_call_options);
 
         mButtonVoicePrivacy = (CheckBoxPreference) findPreference(BUTTON_VP_KEY);
-        if (PhoneApp.getPhone().getPhoneType() != Phone.PHONE_TYPE_CDMA) {
+        if (SipPhoneFactory.getDefaultPhone().getPhoneType() != Phone.PHONE_TYPE_CDMA) {
             //disable the entire screen
             getPreferenceScreen().setEnabled(false);
         }

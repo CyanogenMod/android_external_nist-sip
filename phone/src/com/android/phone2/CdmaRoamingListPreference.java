@@ -28,9 +28,10 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.SipPhoneFactory;
 import com.android.internal.telephony.TelephonyProperties;
 
-public class CdmaSystemSelectListPreference extends ListPreference {
+public class CdmaRoamingListPreference extends ListPreference {
 
     private static final String LOG_TAG = "CdmaRoamingListPreference";
     private static final boolean DBG = true;
@@ -38,16 +39,16 @@ public class CdmaSystemSelectListPreference extends ListPreference {
     private Phone mPhone;
     private MyHandler mHandler = new MyHandler();;
 
-    public CdmaSystemSelectListPreference(Context context, AttributeSet attrs) {
+    public CdmaRoamingListPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        mPhone = PhoneApp.getPhone();
+        mPhone = SipPhoneFactory.getDefaultPhone();
         mHandler = new MyHandler();
         mPhone.queryCdmaRoamingPreference(
                 mHandler.obtainMessage(MyHandler.MESSAGE_GET_ROAMING_PREFERENCE));
     }
 
-    public CdmaSystemSelectListPreference(Context context) {
+    public CdmaRoamingListPreference(Context context) {
         this(context, null);
     }
 

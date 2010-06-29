@@ -218,7 +218,7 @@ public class NetworkSetting extends PreferenceActivity
 
         addPreferencesFromResource(R.xml.carrier_select);
 
-        mPhone = PhoneApp.getPhone();
+        mPhone = PhoneApp.getInstance().phone;
 
         mNetworkList = (PreferenceGroup) getPreferenceScreen().findPreference(LIST_NETWORKS_KEY);
         mNetworkMap = new HashMap<Preference, NetworkInfo>();

@@ -241,7 +241,7 @@ public class BluetoothHandsfree {
         return mHeadset.isConnected();
     }
 
-    /* package */ synchronized void connectHeadset(HeadsetBase headset, int headsetType) {
+    /* package */ void connectHeadset(HeadsetBase headset, int headsetType) {
         mHeadset = headset;
         mHeadsetType = headsetType;
         if (mHeadsetType == TYPE_HEADSET) {
@@ -277,7 +277,7 @@ public class BluetoothHandsfree {
         resetAtState();
     }
 
-    /* package */ synchronized void resetAtState() {
+    private void resetAtState() {
         mClip = false;
         mIndicatorsEnabled = false;
         mServiceConnectionEstablished = false;

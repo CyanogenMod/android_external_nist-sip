@@ -20,8 +20,13 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.net.sip.SipAudioCall;
+import android.net.sip.SipManager;
+import android.net.sip.SipProfile;
+import android.net.sip.SipSessionState;
 import android.os.AsyncResult;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.os.Registrant;
 import android.os.RegistrantList;
@@ -66,214 +71,127 @@ import com.android.internal.telephony.PhoneSubInfo;
 import com.android.internal.telephony.TelephonyProperties;
 
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
+
+import javax.sip.SipException;
 
 /**
  * {@hide}
  */
-public class SipPhone extends PhoneBase {
-    // NOTE that LOG_TAG here is "Sip", which means that log messages
-    // from this file will go into the radio log rather than the main
-    // log.  (Use "adb logcat -b radio" to see them.)
-    static final String LOG_TAG = "SipPhone";
+public class SipPhone extends SipPhoneBase {
+    private static final String LOG_TAG = "SipPhone";
     private static final boolean LOCAL_DEBUG = true;
 
-    // Instance Variables
-    SipCallTracker mCT;
-    PhoneSubInfo mSubInfo;
+    private List<SipCall.SipConnection> connections =
+            new ArrayList<SipCall.SipConnection>();
 
-    Registrant mPostDialHandler;
+    // A call that is ringing or (call) waiting
+    private SipCall ringingCall = new SipCall();
+    private SipCall foregroundCall = new SipCall();
+    private SipCall backgroundCall = new SipCall();
 
-    // Constructors
+    private SipManager mSipManager;
+    private SipProfile mProfile;
 
-    public
-    SipPhone (Context context, CommandsInterface ci, PhoneNotifier notifier) {
-        this(context,ci,notifier, false);
-    }
+    public SipPhone (Context context, PhoneNotifier notifier,
+            SipProfile profile) {
+        super(context, notifier);
 
-    public
-    SipPhone (Context context, CommandsInterface ci, PhoneNotifier notifier, boolean unitTestMode) {
-        super(notifier, context, ci, unitTestMode);
+        Log.v(LOG_TAG, "  +++++++++++++++++++++ new SipPhone: " + profile.getUriString());
+        ringingCall = new SipCall();
+        foregroundCall = new SipCall();
+        backgroundCall = new SipCall();
+        mProfile = profile;
+        mSipManager = SipManager.getInstance(context);
 
-        // TODO: add a new phone type for SIP
-        mCM.setPhoneType(Phone.PHONE_TYPE_GSM);
-        mCT = new SipCallTracker(this);
-        if (!unitTestMode) {
-            mSubInfo = new PhoneSubInfo(this);
-        }
-
+        // FIXME: what's this for SIP?
         //Change the system property
-        SystemProperties.set(TelephonyProperties.CURRENT_ACTIVE_PHONE,
-                new Integer(Phone.PHONE_TYPE_GSM).toString());
-    }
-
-    public void dispose() {
-        synchronized(PhoneProxy.lockForRadioTechnologyChange) {
-            super.dispose();
-
-            //Force all referenced classes to unregister their former registered events
-            mCT.dispose();
-            mSubInfo.dispose();
-        }
-    }
-
-    public void removeReferences() {
-            this.mSubInfo = null;
-            this.mCT = null;
+        //SystemProperties.set(TelephonyProperties.CURRENT_ACTIVE_PHONE,
+        //        new Integer(Phone.PHONE_TYPE_GSM).toString());
     }
 
     public ServiceState getServiceState() {
-        return null; //mSST.ss;
-    }
-
-    public CellLocation getCellLocation() {
-        return null; //mSST.cellLoc;
-    }
-
-    public Phone.State getState() {
-        return mCT.state;
+        // FIXME: we may need to provide this when data connectivity is lost
+        // or when server is down
+        return super.getServiceState();
     }
 
     public String getPhoneName() {
+        // FIXME: profile's name?
         return "SIP";
     }
 
-    public int getPhoneType() {
-        return Phone.PHONE_TYPE_GSM;
-    }
-
-    public SignalStrength getSignalStrength() {
-        return null;
-    }
-
-    public boolean getMessageWaitingIndicator() {
-        return false;
-    }
-
-    public boolean getCallForwardingIndicator() {
-        return false;
-    }
-
-    public List<? extends MmiCode> getPendingMmiCodes() {
-        return null;
-    }
-
-    public DataState getDataConnectionState() {
-        return null;
-    }
-
-    public DataActivityState getDataActivityState() {
-        return null;
-    }
-
-    /**
-     * Notify any interested party of a Phone state change {@link Phone.State}
-     */
-    void notifyPhoneStateChanged() {
-        mNotifier.notifyPhoneState(this);
-    }
-
-    /**
-     * Notify registrants of a change in the call state. This notifies changes in {@link Call.State}
-     * Use this when changes in the precise call state are needed, else use notifyPhoneStateChanged.
-     */
-    void notifyPreciseCallStateChanged() {
-        /* we'd love it if this was package-scoped*/
-        super.notifyPreciseCallStateChangedP();
-    }
-
-    void notifyNewRingingConnection(Connection c) {
-        /* we'd love it if this was package-scoped*/
-        super.notifyNewRingingConnectionP(c);
-    }
-
-    void notifyDisconnect(Connection cn) {
-        mDisconnectRegistrants.notifyResult(cn);
-    }
-
-    void notifyUnknownConnection() {
-        mUnknownConnectionRegistrants.notifyResult(this);
-    }
-
-    void notifySuppServiceFailed(SuppService code) {
-        mSuppServiceFailedRegistrants.notifyResult(code);
-    }
-
-    void notifyServiceStateChanged(ServiceState ss) {
-        super.notifyServiceStateChangedP(ss);
-    }
-
-    public void notifyCallForwardingIndicator() {
-        mNotifier.notifyCallForwardingChanged(this);
-    }
-
     public void acceptCall() throws CallStateException {
-        mCT.acceptCall();
+        //mCT.acceptCall();
     }
 
     public void rejectCall() throws CallStateException {
-        mCT.rejectCall();
+        //mCT.rejectCall();
     }
 
     public void switchHoldingAndActive() throws CallStateException {
-        mCT.switchWaitingOrHoldingAndActive();
+        // TODO
     }
 
     public boolean canConference() {
-        return mCT.canConference();
-    }
-
-    public boolean canDial() {
-        return mCT.canDial();
-    }
-
-    public void conference() throws CallStateException {
-        mCT.conference();
-    }
-
-    public void clearDisconnected() {
-        mCT.clearDisconnected();
-    }
-
-    public boolean canTransfer() {
-        return mCT.canTransfer();
-    }
-
-    public void explicitCallTransfer() throws CallStateException {
-        mCT.explicitCallTransfer();
-    }
-
-    public SipCall getForegroundCall() {
-        return mCT.foregroundCall;
-    }
-
-    public SipCall getBackgroundCall() {
-        return mCT.backgroundCall;
-    }
-
-    public SipCall getRingingCall() {
-        return mCT.ringingCall;
-    }
-
-    public boolean handleInCallMmiCommands(String dialString)
-            throws CallStateException {
+        //TODO
+        //return mCT.canConference();
         return false;
     }
 
-    boolean isInCall() {
-        SipCall.State foregroundCallState = getForegroundCall().getState();
-        SipCall.State backgroundCallState = getBackgroundCall().getState();
-        SipCall.State ringingCallState = getRingingCall().getState();
-
-       return (foregroundCallState.isAlive() || backgroundCallState.isAlive()
-            || ringingCallState.isAlive());
+    public void conference() throws CallStateException {
+        // TODO
     }
 
-    public Connection dial (String dialString) throws CallStateException {
+    public void clearDisconnected() {
+        ringingCall.clearDisconnected();
+        foregroundCall.clearDisconnected();
+        backgroundCall.clearDisconnected();
+
+        updatePhoneState();
+        notifyPreciseCallStateChanged();
+    }
+
+    public boolean canTransfer() {
+        // TODO
+        //return mCT.canTransfer();
+        return false;
+    }
+
+    public void explicitCallTransfer() throws CallStateException {
+        //mCT.explicitCallTransfer();
+    }
+
+    public Connection dial(String dialString) throws CallStateException {
+        // TODO: parse SIP URL?
         // Need to make sure dialString gets parsed properly
-        String newDialString = PhoneNumberUtils.stripSeparators(dialString);
-        return mCT.dial(newDialString);
+        //String newDialString = PhoneNumberUtils.stripSeparators(dialString);
+        //return mCT.dial(newDialString);
+        clearDisconnected();
+
+        if (!canDial()) {
+            throw new CallStateException("cannot dial in current state");
+        }
+        if (foregroundCall.getState() == SipCall.State.ACTIVE) {
+            switchHoldingAndActive();
+        }
+        if (foregroundCall.getState() != SipCall.State.IDLE) {
+            //we should have failed in !canDial() above before we get here
+            throw new CallStateException("cannot dial in current state");
+        }
+
+        setMute(false);
+        //cm.dial(pendingMO.address, clirMode, obtainCompleteMessage());
+        try {
+            Connection c = foregroundCall.dial(dialString);
+            updatePhoneState();
+            notifyPreciseCallStateChanged();
+            return c;
+        } catch (SipException e) {
+            throw new CallStateException("dial error: " + e);
+        }
     }
 
     public void sendDtmf(char c) {
@@ -281,7 +199,7 @@ public class SipPhone extends PhoneBase {
             Log.e(LOG_TAG,
                     "sendDtmf called with invalid character '" + c + "'");
         } else {
-            if (mCT.state ==  Phone.State.OFFHOOK) {
+            if (getState() == State.OFFHOOK) {
                 // FIXME: use mCT instead of mCM
                 //mCM.sendDtmf(c, null);
             }
@@ -305,127 +223,6 @@ public class SipPhone extends PhoneBase {
 
     public void sendBurstDtmf(String dtmfString) {
         Log.e(LOG_TAG, "[SipPhone] sendBurstDtmf() is a CDMA method");
-    }
-
-    public boolean handlePinMmi(String dialString) {
-        return false;
-    }
-
-    public void sendUssdResponse(String ussdMessge) {
-    }
-
-    public void registerForSuppServiceNotification(
-            Handler h, int what, Object obj) {
-    }
-
-    public void unregisterForSuppServiceNotification(Handler h) {
-    }
-
-    public void setRadioPower(boolean power) {
-    }
-
-    public String getVoiceMailNumber() {
-        return null;
-    }
-
-    public String getVoiceMailAlphaTag() {
-        return null;
-    }
-
-    public String getDeviceId() {
-        return null;
-    }
-
-    public String getDeviceSvn() {
-        return null;
-    }
-
-    public String getEsn() {
-        Log.e(LOG_TAG, "[SipPhone] getEsn() is a CDMA method");
-        return "0";
-    }
-
-    public String getMeid() {
-        Log.e(LOG_TAG, "[SipPhone] getMeid() is a CDMA method");
-        return "0";
-    }
-
-    public String getSubscriberId() {
-        return null;
-    }
-
-    public String getIccSerialNumber() {
-        return null;
-    }
-
-    public String getLine1Number() {
-        return null;
-    }
-
-    public String getLine1AlphaTag() {
-        return null;
-    }
-
-    public void setLine1Number(String alphaTag, String number, Message onComplete) {
-        // FIXME: what to reply?
-        AsyncResult.forMessage(onComplete, null, null);
-        onComplete.sendToTarget();
-    }
-
-    public void setVoiceMailNumber(String alphaTag, String voiceMailNumber,
-            Message onComplete) {
-        // FIXME: what to reply?
-        AsyncResult.forMessage(onComplete, null, null);
-        onComplete.sendToTarget();
-    }
-
-    private boolean isValidCommandInterfaceCFReason(int commandInterfaceCFReason) {
-        switch (commandInterfaceCFReason) {
-        case CF_REASON_UNCONDITIONAL:
-        case CF_REASON_BUSY:
-        case CF_REASON_NO_REPLY:
-        case CF_REASON_NOT_REACHABLE:
-        case CF_REASON_ALL:
-        case CF_REASON_ALL_CONDITIONAL:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    private boolean isValidCommandInterfaceCFAction (int commandInterfaceCFAction) {
-        switch (commandInterfaceCFAction) {
-        case CF_ACTION_DISABLE:
-        case CF_ACTION_ENABLE:
-        case CF_ACTION_REGISTRATION:
-        case CF_ACTION_ERASURE:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    protected  boolean isCfEnable(int action) {
-        return (action == CF_ACTION_ENABLE) || (action == CF_ACTION_REGISTRATION);
-    }
-
-    public void getCallForwardingOption(int commandInterfaceCFReason, Message onComplete) {
-        if (isValidCommandInterfaceCFReason(commandInterfaceCFReason)) {
-            // FIXME: what to reply?
-            AsyncResult.forMessage(onComplete, null, null);
-            onComplete.sendToTarget();
-        }
-    }
-
-    public void setCallForwardingOption(int commandInterfaceCFAction,
-            int commandInterfaceCFReason, String dialingNumber,
-            int timerSeconds, Message onComplete) {
-        if (isValidCommandInterfaceCFAction(commandInterfaceCFAction)
-                && isValidCommandInterfaceCFReason(commandInterfaceCFReason)) {
-            // FIXME: what to reply?
-            AsyncResult.forMessage(onComplete, null, null);
-            onComplete.sendToTarget();
-        }
     }
 
     public void getOutgoingCallerIdDisplay(Message onComplete) {
@@ -452,120 +249,184 @@ public class SipPhone extends PhoneBase {
         Log.e(LOG_TAG, "call waiting not supported");
     }
 
-    public boolean getIccRecordsLoaded() {
-        return false;
-    }
-
-    public IccCard getIccCard() {
-        return null;
-    }
-
-    public void getAvailableNetworks(Message response) {
-        // FIXME: what to reply?
-    }
-
-    public void setNetworkSelectionModeAutomatic(Message response) {
-        // FIXME: what to reply?
-    }
-
-    public void selectNetworkManually(
-            com.android.internal.telephony.gsm.NetworkInfo network,
-            Message response) {
-        // FIXME: what to reply?
-    }
-
-    public void getNeighboringCids(Message response) {
-        // FIXME: what to reply?
-    }
-
-    public void setOnPostDialCharacter(Handler h, int what, Object obj) {
-        mPostDialHandler = new Registrant(h, what, obj);
-    }
-
     public void setMute(boolean muted) {
-        mCT.setMute(muted);
+        // TODO
+        //mCT.setMute(muted);
     }
 
     public boolean getMute() {
-        return mCT.getMute();
-    }
-
-    public void getDataCallList(Message response) {
-        // FIXME: what to reply?
-    }
-
-    public List<DataConnection> getCurrentDataConnectionList () {
-        return null;
-    }
-
-    public void updateServiceLocation() {
-    }
-
-    public void enableLocationUpdates() {
-    }
-
-    public void disableLocationUpdates() {
-    }
-
-    public boolean getDataRoamingEnabled() {
+        // TODO
+        //return mCT.getMute();
         return false;
     }
 
-    public void setDataRoamingEnabled(boolean enable) {
+    public Call getForegroundCall() {
+        return foregroundCall;
     }
 
-    public boolean enableDataConnectivity() {
-        return false;
+    public Call getBackgroundCall() {
+        return backgroundCall;
     }
 
-    public boolean disableDataConnectivity() {
-        return false;
+    public Call getRingingCall() {
+        return ringingCall;
     }
 
-    public boolean isDataConnectivityPossible() {
-        return false;
+    private class SipCall extends SipCallBase {
+        public Phone getPhone() {
+            return SipPhone.this;
+        }
+
+        public Connection dial(String calleeSipUri) throws SipException {
+            try {
+                SipProfile callee =
+                        new SipProfile.Builder(calleeSipUri).build();
+                SipConnection c = new SipConnection(callee);
+                c.dial();
+                connections.add(c);
+                state = Call.State.DIALING;
+                return c;
+            } catch (ParseException e) {
+                throw new SipException("dial", e);
+            }
+        }
+
+        // TODO: if this is the foreground call and a background call exists,
+        // resume the background call
+        public void hangup() throws CallStateException {
+            Log.v(LOG_TAG, "hang up call: " + getState() + ": " + this
+                    + " on phone " + getPhone());
+            CallStateException excp = null;
+            for (Connection c : connections) {
+                try {
+                    c.hangup();
+                } catch (CallStateException e) {
+                    excp = e;
+                }
+            }
+            if (excp != null) throw excp;
+        }
+
+        private void onConnectionStateChanged(SipConnection conn) {
+            // this can be called back when a conf call is formed
+            // TODO: how to synchronize this?
+            // TODO: who to notify?
+            state = conn.getState();
+            Log.v(LOG_TAG, "++******++ call state changed: " + getState() + ": "
+                    + this + ": on phone " + getPhone() + " "
+                    + connections.size());
+            notifyPreciseCallStateChangedP();
+        }
+
+        private void onConnectionEnded(SipConnection conn) {
+            // this can be called back when a conf call is formed
+            // TODO: how to synchronize this?
+            // TODO: who to notify?
+            state = conn.getState();
+            Log.v(LOG_TAG, "-------- call ended: " + getState() + ": " + this
+                    + ": on phone " + getPhone() + " " + connections.size());
+            notifyDisconnectP(conn);
+        }
+
+        class SipConnection extends SipConnectionBase {
+            private SipCall mOwner = SipCall.this;
+                    // could be different in a conf call
+            private SipAudioCall mSipAudioCall;
+            private Call.State mState = Call.State.IDLE;
+            private SipProfile mPeer;
+            private SipAudioCallAdapter mAdapter = new SipAudioCallAdapter() {
+                protected void onCallEnded() {
+                    mState = Call.State.DISCONNECTED;
+                    mOwner.onConnectionEnded(SipConnection.this);
+                    Log.v(LOG_TAG, "-------- connection ended: " + mPeer.getUriString() + ": " + mSipAudioCall.getState() + ": on phone " + getPhone());
+                }
+
+                public void onChanged(SipAudioCall call) {
+                    mState = getCallStateFrom(call);
+                    mOwner.onConnectionStateChanged(SipConnection.this);
+                    Log.v(LOG_TAG, "++******++ connection state changed: " + mPeer.getUriString() + ": " + call.getState() + ": on phone " + getPhone());
+                }
+            };
+
+            public SipConnection(SipProfile callee) {
+                super(callee.getSipDomain(), callee.getUriString());
+                mPeer = callee;
+            }
+
+            public Call.State getState() {
+                return mState;
+            }
+
+            public void dial() throws SipException {
+                mState = Call.State.DIALING;
+                mSipAudioCall = mSipManager.makeAudioCall(mContext, mProfile,
+                        mPeer, mAdapter);
+            }
+
+            public SipCall getCall() {
+                return mOwner;
+            }
+
+            protected Phone getPhone() {
+                return mOwner.getPhone();
+            }
+
+            public void hangup() throws CallStateException {
+                Log.v(LOG_TAG, "hangup conn: " + mPeer.getUriString() + ": "
+                        + ": on phone " + getPhone());
+                try {
+                    mSipAudioCall.endCall();
+                } catch (SipException e) {
+                    throw new CallStateException("hangup(): " + e);
+                }
+            }
+
+            public void separate() throws CallStateException {
+                // TODO: what's this for SIP?
+                /*
+                if (!disconnected) {
+                    owner.separate(this);
+                } else {
+                    throw new CallStateException ("disconnected");
+                }
+                */
+            }
+
+        }
     }
 
-    boolean updateCurrentCarrierInProvider() {
-        return false;
+    private static Call.State getCallStateFrom(SipAudioCall sipAudioCall) {
+        SipSessionState sessionState = sipAudioCall.getState();
+        switch (sessionState) {
+            case READY_TO_CALL:            return Call.State.IDLE;
+            case INCOMING_CALL:
+            case INCOMING_CALL_ANSWERING:  return Call.State.INCOMING;
+            case OUTGOING_CALL:            return Call.State.DIALING;
+            case OUTGOING_CALL_RING_BACK:  return Call.State.ALERTING;
+            case OUTGOING_CALL_CANCELING:  return Call.State.DISCONNECTING;
+            case IN_CALL:                  return Call.State.ACTIVE;
+            default:
+                Log.w(LOG_TAG, "illegal connection state: " + sessionState);
+                return Call.State.DISCONNECTED;
+        }
     }
 
-    public void saveClirSetting(int commandInterfaceCLIRMode) {
-        // FIXME: what's this for SIP?
-    }
+    private abstract class SipAudioCallAdapter extends SipAudioCall.Adapter {
+        private SipException mError;
 
-    /**
-     * Retrieves the PhoneSubInfo of the SipPhone
-     */
-    public PhoneSubInfo getPhoneSubInfo(){
-        return mSubInfo;
-    }
+        protected abstract void onCallEnded();
 
-    /** {@inheritDoc} */
-    public IccSmsInterfaceManager getIccSmsInterfaceManager(){
-        return null;
-    }
+        public void onCallEnded(SipAudioCall call) {
+            onCallEnded();
+        }
 
-    /** {@inheritDoc} */
-    public IccPhoneBookInterfaceManager getIccPhoneBookInterfaceManager(){
-        return null;
-    }
+        public void onError(SipAudioCall call, String errorMessage) {
+            mError = new SipException(errorMessage);
+            onCallEnded();
+        }
 
-    /** {@inheritDoc} */
-    public IccFileHandler getIccFileHandler(){
-        return null;
+        public SipException getError() {
+            return mError;
+        }
     }
-
-    public void activateCellBroadcastSms(int activate, Message response) {
-        Log.e(LOG_TAG, "Error! This functionality is not implemented for SIP.");
-    }
-
-    public void getCellBroadcastSmsConfig(Message response) {
-        Log.e(LOG_TAG, "Error! This functionality is not implemented for SIP.");
-    }
-
-    public void setCellBroadcastSmsConfig(int[] configValuesArray, Message response){
-        Log.e(LOG_TAG, "Error! This functionality is not implemented for SIP.");
-    }
-
 }

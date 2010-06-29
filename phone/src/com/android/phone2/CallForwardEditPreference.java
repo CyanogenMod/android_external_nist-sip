@@ -1,9 +1,9 @@
 package com.android.phone2;
 
 import com.android.internal.telephony.CallForwardInfo;
-import com.android.internal.telephony.CommandException;
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.SipPhoneFactory;
 
 import android.app.AlertDialog;
 import android.content.Context;
@@ -16,6 +16,7 @@ import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 
+import static com.android.phone2.TimeConsumingPreferenceActivity.EXCEPTION_ERROR;
 import static com.android.phone2.TimeConsumingPreferenceActivity.RESPONSE_ERROR;
 
 public class CallForwardEditPreference extends EditPhoneNumberPreference {
@@ -35,7 +36,7 @@ public class CallForwardEditPreference extends EditPhoneNumberPreference {
     public CallForwardEditPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        phone = PhoneApp.getPhone();
+        phone = SipPhoneFactory.getDefaultPhone();
         mSummaryOnTemplate = this.getSummaryOn();
 
         TypedArray a = context.obtainStyledAttributes(attrs,
@@ -177,8 +178,8 @@ public class CallForwardEditPreference extends EditPhoneNumberPreference {
             callForwardInfo = null;
             if (ar.exception != null) {
                 if (DBG) Log.d(LOG_TAG, "handleGetCFResponse: ar.exception=" + ar.exception);
-                tcpListener.onException(CallForwardEditPreference.this,
-                        (CommandException) ar.exception);
+                setEnabled(false);
+                tcpListener.onError(CallForwardEditPreference.this, EXCEPTION_ERROR);
             } else {
                 if (ar.userObj instanceof Throwable) {
                     tcpListener.onError(CallForwardEditPreference.this, RESPONSE_ERROR);

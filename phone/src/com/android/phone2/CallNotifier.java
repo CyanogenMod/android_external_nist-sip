@@ -155,7 +155,7 @@ public class CallNotifier extends Handler
     private static final int TONE_RELATIVE_VOLUME_SIGNALINFO = 80;
 
     private Call.State mPreviousCdmaCallState;
-    private boolean mVoicePrivacyState = false;
+    private boolean mCdmaVoicePrivacyState = false;
     private boolean mIsCdmaRedialCall = false;
 
     // Emergency call tone and vibrate:
@@ -180,19 +180,39 @@ public class CallNotifier extends Handler
 
         mAudioManager = (AudioManager) mPhone.getContext().getSystemService(Context.AUDIO_SERVICE);
 
-        registerForNotifications();
+        mPhone.registerForNewRingingConnection(this, PHONE_NEW_RINGING_CONNECTION, null);
+        mPhone.registerForPreciseCallStateChanged(this, PHONE_STATE_CHANGED, null);
+        mPhone.registerForDisconnect(this, PHONE_DISCONNECT, null);
+        mPhone.registerForUnknownConnection(this, PHONE_UNKNOWN_CONNECTION_APPEARED, null);
+        mPhone.registerForIncomingRing(this, PHONE_INCOMING_RING, null);
 
-        // Instantiate the ToneGenerator for SignalInfo and CallWaiting
-        // TODO: We probably don't need the mSignalInfoToneGenerator instance
-        // around forever. Need to change it so as to create a ToneGenerator instance only
-        // when a tone is being played and releases it after its done playing.
-        try {
-            mSignalInfoToneGenerator = new ToneGenerator(AudioManager.STREAM_VOICE_CALL,
-                    TONE_RELATIVE_VOLUME_SIGNALINFO);
-        } catch (RuntimeException e) {
-            Log.w(LOG_TAG, "CallNotifier: Exception caught while creating " +
-                    "mSignalInfoToneGenerator: " + e);
-            mSignalInfoToneGenerator = null;
+        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+            mPhone.registerForCdmaOtaStatusChange(this, EVENT_OTA_PROVISION_CHANGE, null);
+
+            if (DBG) log("Registering for Call Waiting, Signal and Display Info.");
+            mPhone.registerForCallWaiting(this, PHONE_CDMA_CALL_WAITING, null);
+            mPhone.registerForDisplayInfo(this, PHONE_STATE_DISPLAYINFO, null);
+            mPhone.registerForSignalInfo(this, PHONE_STATE_SIGNALINFO, null);
+            mPhone.registerForInCallVoicePrivacyOn(this, PHONE_ENHANCED_VP_ON, null);
+            mPhone.registerForInCallVoicePrivacyOff(this, PHONE_ENHANCED_VP_OFF, null);
+
+            // Instantiate the ToneGenerator for SignalInfo and CallWaiting
+            // TODO: We probably don't need the mSignalInfoToneGenerator instance
+            // around forever. Need to change it so as to create a ToneGenerator instance only
+            // when a tone is being played and releases it after its done playing.
+            try {
+                mSignalInfoToneGenerator = new ToneGenerator(AudioManager.STREAM_VOICE_CALL,
+                        TONE_RELATIVE_VOLUME_SIGNALINFO);
+            } catch (RuntimeException e) {
+                Log.w(LOG_TAG, "CallNotifier: Exception caught while creating " +
+                        "mSignalInfoToneGenerator: " + e);
+                mSignalInfoToneGenerator = null;
+            }
+        }
+
+        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_GSM) {
+            mPhone.registerForRingbackTone(this, PHONE_RINGBACK_TONE, null);
+            mPhone.registerForResendIncallMute(this, PHONE_RESEND_MUTE, null);
         }
 
         mRinger = ringer;
@@ -308,10 +328,10 @@ public class CallNotifier extends Handler
 
             case PHONE_ENHANCED_VP_ON:
                 if (DBG) log("PHONE_ENHANCED_VP_ON...");
-                if (!mVoicePrivacyState) {
+                if (!mCdmaVoicePrivacyState) {
                     int toneToPlay = InCallTonePlayer.TONE_VOICE_PRIVACY;
                     new InCallTonePlayer(toneToPlay).start();
-                    mVoicePrivacyState = true;
+                    mCdmaVoicePrivacyState = true;
                     // Update the VP icon:
                     NotificationMgr.getDefault().updateInCallNotification();
                 }
@@ -319,10 +339,10 @@ public class CallNotifier extends Handler
 
             case PHONE_ENHANCED_VP_OFF:
                 if (DBG) log("PHONE_ENHANCED_VP_OFF...");
-                if (mVoicePrivacyState) {
+                if (mCdmaVoicePrivacyState) {
                     int toneToPlay = InCallTonePlayer.TONE_VOICE_PRIVACY;
                     new InCallTonePlayer(toneToPlay).start();
-                    mVoicePrivacyState = false;
+                    mCdmaVoicePrivacyState = false;
                     // Update the VP icon:
                     NotificationMgr.getDefault().updateInCallNotification();
                 }
@@ -369,7 +389,7 @@ public class CallNotifier extends Handler
         }
 
         // Incoming calls are totally ignored if OTA call is active
-        if (TelephonyCapabilities.supportsOtasp(mPhone)) {
+        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
             boolean activateState = (mApplication.cdmaOtaScreenState.otaScreenState
                     == OtaUtils.CdmaOtaScreenState.OtaScreenState.OTA_STATUS_ACTIVATION);
             boolean dialogState = (mApplication.cdmaOtaScreenState.otaScreenState
@@ -389,7 +409,9 @@ public class CallNotifier extends Handler
 
         if (c != null && c.isRinging()) {
             // Stop any signalInfo tone being played on receiving a Call
-            stopSignalInfoTone();
+            if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+                stopSignalInfoTone();
+            }
 
             Call.State state = c.getState();
             // State will be either INCOMING or WAITING.
@@ -719,26 +741,36 @@ public class CallNotifier extends Handler
         mPhone.unregisterForInCallVoicePrivacyOff(this);
 
         // Register all events new to the new active phone
-        registerForNotifications();
-    }
-
-    private void registerForNotifications() {
         mPhone.registerForNewRingingConnection(this, PHONE_NEW_RINGING_CONNECTION, null);
         mPhone.registerForPreciseCallStateChanged(this, PHONE_STATE_CHANGED, null);
         mPhone.registerForDisconnect(this, PHONE_DISCONNECT, null);
         mPhone.registerForUnknownConnection(this, PHONE_UNKNOWN_CONNECTION_APPEARED, null);
         mPhone.registerForIncomingRing(this, PHONE_INCOMING_RING, null);
-
-        if (TelephonyCapabilities.supportsOtasp(mPhone)) {
+        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+            if (DBG) log("Registering for Call Waiting, Signal and Display Info.");
+            mPhone.registerForCallWaiting(this, PHONE_CDMA_CALL_WAITING, null);
+            mPhone.registerForDisplayInfo(this, PHONE_STATE_DISPLAYINFO, null);
+            mPhone.registerForSignalInfo(this, PHONE_STATE_SIGNALINFO, null);
             mPhone.registerForCdmaOtaStatusChange(this, EVENT_OTA_PROVISION_CHANGE, null);
+
+            // Instantiate the ToneGenerator for SignalInfo
+            try {
+                mSignalInfoToneGenerator = new ToneGenerator(AudioManager.STREAM_VOICE_CALL,
+                        TONE_RELATIVE_VOLUME_SIGNALINFO);
+            } catch (RuntimeException e) {
+                Log.w(LOG_TAG, "CallNotifier: Exception caught while creating " +
+                        "mSignalInfoToneGenerator: " + e);
+                mSignalInfoToneGenerator = null;
+            }
+
+            mPhone.registerForInCallVoicePrivacyOn(this, PHONE_ENHANCED_VP_ON, null);
+            mPhone.registerForInCallVoicePrivacyOff(this, PHONE_ENHANCED_VP_OFF, null);
         }
-        mPhone.registerForCallWaiting(this, PHONE_CDMA_CALL_WAITING, null);
-        mPhone.registerForDisplayInfo(this, PHONE_STATE_DISPLAYINFO, null);
-        mPhone.registerForSignalInfo(this, PHONE_STATE_SIGNALINFO, null);
-        mPhone.registerForInCallVoicePrivacyOn(this, PHONE_ENHANCED_VP_ON, null);
-        mPhone.registerForInCallVoicePrivacyOff(this, PHONE_ENHANCED_VP_OFF, null);
-        mPhone.registerForRingbackTone(this, PHONE_RINGBACK_TONE, null);
-        mPhone.registerForResendIncallMute(this, PHONE_RESEND_MUTE, null);
+
+        if (mPhone.getPhoneType() == Phone.PHONE_TYPE_GSM) {
+            mPhone.registerForRingbackTone(this, PHONE_RINGBACK_TONE, null);
+            mPhone.registerForResendIncallMute(this, PHONE_RESEND_MUTE, null);
+        }
     }
 
     /**
@@ -791,7 +823,7 @@ public class CallNotifier extends Handler
     private void onDisconnect(AsyncResult r) {
         if (VDBG) log("onDisconnect()...  phone state: " + mPhone.getState());
 
-        mVoicePrivacyState = false;
+        mCdmaVoicePrivacyState = false;
         int autoretrySetting = 0;
         if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
             autoretrySetting = android.provider.Settings.System.getInt(mPhone.getContext().
@@ -802,10 +834,10 @@ public class CallNotifier extends Handler
             PhoneUtils.setAudioControlState(PhoneUtils.AUDIO_IDLE);
         }
 
-        // Stop any signalInfo tone being played when a call gets ended
-        stopSignalInfoTone();
-
         if (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA) {
+            // Stop any signalInfo tone being played when a call gets ended
+            stopSignalInfoTone();
+
             // Resetting the CdmaPhoneCallState members
             mApplication.cdmaPhoneCallState.resetCdmaPhoneCallState();
 
@@ -885,9 +917,6 @@ public class CallNotifier extends Handler
             } else if (cause == Connection.DisconnectCause.OUT_OF_SERVICE) {
                 if (DBG) log("- need to play OUT OF SERVICE tone!");
                 toneToPlay = InCallTonePlayer.TONE_OUT_OF_SERVICE;
-            } else if (cause == Connection.DisconnectCause.UNOBTAINABLE_NUMBER) {
-                if (DBG) log("- need to play TONE_UNOBTAINABLE_NUMBER tone!");
-                toneToPlay = InCallTonePlayer.TONE_UNOBTAINABLE_NUMBER;
             } else if (cause == Connection.DisconnectCause.ERROR_UNSPECIFIED) {
                 if (DBG) log("- DisconnectCause is ERROR_UNSPECIFIED: play TONE_CALL_ENDED!");
                 toneToPlay = InCallTonePlayer.TONE_CALL_ENDED;
@@ -972,30 +1001,26 @@ public class CallNotifier extends Handler
                     }
                 }
 
-                // On some devices, to avoid accidental redialing of
-                // emergency numbers, we *never* log emergency calls to
-                // the Call Log.  (This behavior is set on a per-product
-                // basis, based on carrier requirements.)
-                final boolean okToLogEmergencyNumber =
-                        mApplication.getResources().getBoolean(
-                                R.bool.allow_emergency_numbers_in_call_log);
+                // To prevent accidental redial of emergency numbers
+                // (carrier requirement) the quickest solution is to
+                // not log the emergency number. We gate on CDMA
+                // (ugly) when we actually mean carrier X.
+                // TODO: Clean this up and come up with a unified strategy.
+                final boolean shouldNotlogEmergencyNumber =
+                        (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA);
 
-                // Don't call isOtaSpNumber() on phones that don't support OTASP.
-                final boolean isOtaspNumber = TelephonyCapabilities.supportsOtasp(mPhone)
+                // Don't call isOtaSpNumber on GSM phones.
+                final boolean isOtaNumber = (mPhone.getPhoneType() == Phone.PHONE_TYPE_CDMA)
                         && mPhone.isOtaSpNumber(number);
                 final boolean isEmergencyNumber = PhoneNumberUtils.isEmergencyNumber(number);
 
-                // Don't log emergency numbers if the device doesn't allow it,
-                // and never log OTASP calls.
-                final boolean okToLogThisCall =
-                        (!isEmergencyNumber || okToLogEmergencyNumber)
-                        && !isOtaspNumber;
-
-                if (okToLogThisCall) {
+                // Don't put OTA or CDMA Emergency calls into call log
+                if (!(isOtaNumber || isEmergencyNumber && shouldNotlogEmergencyNumber)) {
                     CallLogAsync.AddCallArgs args =
                             new CallLogAsync.AddCallArgs(
                                 mPhone.getContext(), ci, logNumber, presentation,
                                 callLogType, date, duration);
+
                     mCallLog.addCall(args);
                 }
             }
@@ -1052,7 +1077,7 @@ public class CallNotifier extends Handler
                     if (autoretrySetting == InCallScreen.AUTO_RETRY_ON) {
                         // TODO: (Moto): The contact reference data may need to be stored and use
                         // here when redialing a call. For now, pass in NULL as the URI parameter.
-                        PhoneUtils.placeCall(mPhone.getContext(), mPhone, number, null, false, null);
+                        PhoneUtils.placeCall(mPhone, number, null);
                         mIsCdmaRedialCall = true;
                     } else {
                         mIsCdmaRedialCall = false;
@@ -1169,7 +1194,6 @@ public class CallNotifier extends Handler
         public static final int TONE_REDIAL = 11;
         public static final int TONE_OTA_CALL_END = 12;
         public static final int TONE_RING_BACK = 13;
-        public static final int TONE_UNOBTAINABLE_NUMBER = 14;
 
         // The tone volume relative to other sounds in the stream
         private static final int TONE_RELATIVE_VOLUME_HIPRI = 80;
@@ -1282,11 +1306,6 @@ public class CallNotifier extends Handler
                     toneVolume = TONE_RELATIVE_VOLUME_HIPRI;
                     // Call ring back tone is stopped by stopTone() method
                     toneLengthMillis = Integer.MAX_VALUE - TONE_TIMEOUT_BUFFER;
-                    break;
-                case TONE_UNOBTAINABLE_NUMBER:
-                    toneType = ToneGenerator.TONE_SUP_ERROR;
-                    toneVolume = TONE_RELATIVE_VOLUME_HIPRI;
-                    toneLengthMillis = 4000;
                     break;
                 default:
                     throw new IllegalArgumentException("Bad toneId: " + mToneId);
@@ -1634,10 +1653,10 @@ public class CallNotifier extends Handler
     }
 
     /**
-     * Return the private variable mVoicePrivacyState.
+     * Return the private variable mCdmaVoicePrivacyState.
      */
-    /* package */ boolean getVoicePrivacyState() {
-        return mVoicePrivacyState;
+    /* package */ boolean getCdmaVoicePrivacyState() {
+        return mCdmaVoicePrivacyState;
     }
 
     /**

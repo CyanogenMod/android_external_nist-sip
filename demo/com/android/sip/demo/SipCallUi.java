@@ -307,7 +307,8 @@ public class SipCallUi extends Activity implements OnClickListener,
     private void addCallRecord(int callType, String address) {
         long insertDate = new Date().getTime();
         ContentValues value = new ContentValues();
-        value.put(Calls.NUMBER, address.substring(0, address.indexOf('@')));
+        //value.put(Calls.NUMBER, address.substring(0, address.indexOf('@')));
+        value.put(Calls.NUMBER, address);
         value.put(Calls.DATE, insertDate);
         value.put(Calls.DURATION,
                 (mCallTime != 0) ? (insertDate - mCallTime)/1000 : 0);

@@ -205,7 +205,9 @@ public class EditFdnContactScreen extends Activity {
         mName =  intent.getStringExtra(INTENT_EXTRA_NAME);
         mNumber =  intent.getStringExtra(INTENT_EXTRA_NUMBER);
 
-        mAddContact = TextUtils.isEmpty(mNumber);
+        if (TextUtils.isEmpty(mName) && TextUtils.isEmpty(mNumber)) {
+            mAddContact = true;
+        }
     }
 
     /**

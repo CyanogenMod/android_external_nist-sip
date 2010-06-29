@@ -68,11 +68,9 @@
          widget needs to be be a direct child of a FrameLayout anyway.)
          This is used only on devices that do *not* have an onscreen
          InCallTouchUi widget.-->
-    <ViewStub android:id="@+id/dtmf_dialer_stub"
-              android:layout="@layout/dtmf_twelve_key_dialer"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              />
+    <!-- TODO: this should be a ViewStub, and should only get inflated
+         on platforms that need it. -->
+    <include layout="@layout/dtmf_twelve_key_dialer"/>
 
     <!-- Finally, the "touch lock" overlay, drawn on top of the DTMF
          dialpad (after some delay) to prevent false touches from
@@ -111,37 +109,28 @@
         android:layout_height="match_parent"
         />
 
-    <!-- Layout where the provider's badge will be
+    <!-- Frame where the provider's badge will be
          inflated. The badge must fit in the available height.
          The badge is displayed for 5s on top of the contact's
          picture.
       -->
-    <LinearLayout android:id="@+id/inCallProviderOverlay"
+    <FrameLayout android:id="@+id/inCallProviderOverlay"
         android:background="@drawable/dialog_bg_calling_via"
         android:layout_width="match_parent"
-        android:layout_height="88dip"
+        android:layout_height="wrap_content"
+        android:minHeight="88dip"
         android:layout_marginTop="8dip"
         android:layout_gravity="top"
-        android:gravity="center"
-        android:visibility="gone"
-        android:orientation="horizontal">
-
-         <ImageView android:id="@+id/callingViaIcon"
-            android:layout_width="40dip"
-            android:layout_height="40dip"
-            />
+        android:visibility="gone">
         <TextView android:id="@+id/callingVia"
             android:text="@string/calling_via_template"
-            android:layout_weight="1"
-            android:layout_width="0dip"
-            android:layout_height="match_parent"
-            android:textAppearance="?android:attr/textAppearanceSmallInverse"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
             android:gravity="center"
+            android:textAppearance="?android:attr/textAppearanceMediumInverse"
+            android:textSize="16sp"
             />
-        <View
-            android:layout_width="40dip"
-            android:layout_height="40dip"
-            />
-    </LinearLayout>
+    </FrameLayout>
 
 </FrameLayout>

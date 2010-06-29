@@ -35,6 +35,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.SipPhoneFactory;
 
 /**
  * "SIM network unlock" PIN entry screen.
@@ -148,7 +149,7 @@ public class IccNetworkDepersonalizationPanel extends IccPanel {
         mStatusPanel = (LinearLayout) findViewById(R.id.status_panel);
         mStatusText = (TextView) findViewById(R.id.status_text);
 
-        mPhone = PhoneApp.getPhone();
+        mPhone = SipPhoneFactory.getDefaultPhone();
     }
 
     @Override
