@@ -95,8 +95,7 @@ public class SipPhone extends SipPhoneBase {
     private SipManager mSipManager;
     private SipProfile mProfile;
 
-    public SipPhone (Context context, PhoneNotifier notifier,
-            SipProfile profile) {
+    SipPhone (Context context, PhoneNotifier notifier, SipProfile profile) {
         super(context, notifier);
 
         Log.v(LOG_TAG, "  +++++++++++++++++++++ new SipPhone: " + profile.getUriString());

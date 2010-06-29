@@ -27,7 +27,7 @@ import android.os.Message;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import android.util.Log;
 
 import java.util.ArrayList;

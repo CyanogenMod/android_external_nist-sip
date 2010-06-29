@@ -41,7 +41,7 @@ import android.util.Log;
 
 import com.android.internal.telephony.Call;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 import java.util.HashMap;
 import java.util.LinkedList;

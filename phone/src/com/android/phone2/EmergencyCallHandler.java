@@ -26,7 +26,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.provider.Settings;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import android.telephony.ServiceState;
 import android.view.WindowManager;
 

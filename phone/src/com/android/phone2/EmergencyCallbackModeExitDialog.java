@@ -40,7 +40,7 @@ import android.os.SystemProperties;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 

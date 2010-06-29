@@ -3,7 +3,7 @@ package com.android.phone2;
 import com.android.internal.telephony.CallForwardInfo;
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 import android.app.AlertDialog;
 import android.content.Context;

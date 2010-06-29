@@ -1,7 +1,7 @@
 package com.android.phone2;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 import android.content.DialogInterface;
 import android.os.AsyncResult;

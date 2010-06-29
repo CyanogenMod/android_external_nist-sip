@@ -28,7 +28,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.TelephonyProperties;
 
 public class CdmaRoamingListPreference extends ListPreference {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,88 +14,45 @@
  * limitations under the License.
  */
 
-package com.android.internal.telephony;
+package com.android.internal.telephony.sip;
 
+import com.android.internal.telephony.*;
+import com.android.internal.telephony.gsm.NetworkInfo;
+import com.android.internal.telephony.test.SimulatedRadioControl;
 
-import android.app.ActivityManagerNative;
 import android.content.Context;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.net.sip.SipProfile;
 import android.os.Handler;
 import android.os.Message;
-import android.os.SystemProperties;
-import android.preference.PreferenceManager;
 import android.telephony.CellLocation;
-import android.telephony.PhoneStateListener;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
 import android.util.Log;
 
-import com.android.internal.telephony.sip.SipPhone;
-import com.android.internal.telephony.gsm.NetworkInfo;
-import com.android.internal.telephony.test.SimulatedRadioControl;
-
-import java.text.ParseException;
 import java.util.List;
 
+/**
+ * Temporary. Will be removed after integrating with CallManager.
+ * @hide
+ */
 public class SipPhoneProxy implements Phone {
+    private static final String LOG_TAG = "PHONE";
+
     private static SipPhoneProxy sPhoneProxy = new SipPhoneProxy();
-    private static PhoneNotifier sPhoneNotifier = makeDefaultPhoneNotifier();
-    private static Context sContext;
 
-    public static void makePhoneProxy(Context context) {
-        sContext = context;
-        setPhone("sip:fake@fake.domain");
-    }
-
-    public static SipPhoneProxy getPhoneProxy() {
+    public static SipPhoneProxy getInstance() {
         return sPhoneProxy;
-    }
-
-    public static void setPhone(String sipProfileUri) {
-        try {
-            SipProfile profile = new SipProfile.Builder(sipProfileUri).build();
-            sPhoneProxy.mActivePhone =
-                    new SipPhone(sContext, sPhoneNotifier, profile);
-            Log.v("SipPhoneProxy", "setPhone: " + sPhoneProxy + " proxes " + sPhoneProxy.mActivePhone);
-        } catch (ParseException e) {
-            Log.v("SipPhoneProxy", "setPhone", e);
-        }
-    }
-
-    private static PhoneNotifier makeDefaultPhoneNotifier() {
-        try {
-            return new SipPhoneNotifier();
-        } catch (Error e) {
-            Log.e("SipPhoneProxy", "makeDefaultPhoneNotifier", e);
-            throw e;
-        }
     }
 
     private SipPhone mActivePhone;
 
-    private static final String LOG_TAG = "PHONE";
-
     private SipPhoneProxy() {
     }
 
-    private void logv(String msg) {
-        Log.v(LOG_TAG, "[PhoneProxy] " + msg);
+    public void setPhone(SipPhone phone) {
+        if (phone == null) return;
+        mActivePhone = phone;
+        Log.v("SipPhoneProxy", "setPhone: " + this + " proxes " + phone);
     }
-
-    private void logd(String msg) {
-        Log.d(LOG_TAG, "[PhoneProxy] " + msg);
-    }
-
-    private void logw(String msg) {
-        Log.w(LOG_TAG, "[PhoneProxy] " + msg);
-    }
-
-    private void loge(String msg) {
-        Log.e(LOG_TAG, "[PhoneProxy] " + msg);
-    }
-
 
     public ServiceState getServiceState() {
         return mActivePhone.getServiceState();

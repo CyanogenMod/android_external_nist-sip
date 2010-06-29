@@ -35,7 +35,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 /**
  * "SIM network unlock" PIN entry screen.

@@ -55,9 +55,9 @@ import com.android.internal.telephony.Call;
 import com.android.internal.telephony.IccCard;
 import com.android.internal.telephony.MmiCode;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.cdma.EriInfo;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.phone2.OtaUtils.CdmaOtaScreenState;
 import com.android.internal.telephony.cdma.TtyIntent;
 
@@ -399,7 +399,7 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
 
             NotificationMgr.init(this);
 
-            phoneMgr = new PhoneInterfaceManager(this, phone);
+            //phoneMgr = new PhoneInterfaceManager(this, phone);
 
             int phoneType = phone.getPhoneType();
 

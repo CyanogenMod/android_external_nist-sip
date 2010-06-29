@@ -37,7 +37,7 @@ import android.widget.Toast;
 import com.android.internal.telephony.CommandException;
 import com.android.internal.telephony.IccCard;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 /**
  * "Change ICC PIN" UI for the Phone app.

@@ -5,7 +5,7 @@ import static com.android.phone2.TimeConsumingPreferenceActivity.RESPONSE_ERROR;
 
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 import android.content.Context;
 import android.os.AsyncResult;

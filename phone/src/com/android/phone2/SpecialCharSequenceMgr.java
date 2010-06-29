@@ -22,7 +22,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Telephony.Intents;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.Phone;
 import android.telephony.PhoneNumberUtils;
 import android.util.Log;

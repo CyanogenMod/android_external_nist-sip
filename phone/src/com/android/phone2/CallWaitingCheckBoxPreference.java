@@ -11,7 +11,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 
 public class CallWaitingCheckBoxPreference extends CheckBoxPreference {
     private static final String LOG_TAG = "CallWaitingCheckBoxPreference";

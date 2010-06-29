@@ -16,6 +16,10 @@
 
 package com.android.phone2;
 
+import com.android.internal.telephony.sip.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneProxy;
+import com.android.internal.telephony.sip.SipPhone;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -43,8 +47,11 @@ public class SipBroadcastReceiver extends BroadcastReceiver {
         } else if (action.equals(SipManager.SIP_ADD_PHONE_ACTION)) {
             String localSipUri = intent.getStringExtra(SipManager.LOCAL_URI_KEY);
             Log.v(TAG, "new profile: " + localSipUri);
-            // TODO: should call CallManager.addPhone()
-            com.android.internal.telephony.SipPhoneProxy.setPhone(localSipUri);
+            SipPhone phone = SipPhoneFactory.makePhone(localSipUri);
+            if (phone != null) {
+                // TODO: should call CallManager.getInstance().addPhone()
+                SipPhoneProxy.getInstance().setPhone(phone);
+            }
         } else {
             Log.v(TAG, "action not processed: " + action);
             return;

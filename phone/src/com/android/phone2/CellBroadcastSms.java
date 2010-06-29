@@ -24,7 +24,7 @@ import android.preference.Preference;
 import android.preference.PreferenceScreen;
 import android.preference.PreferenceActivity;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.RILConstants;
 
 import android.os.AsyncResult;

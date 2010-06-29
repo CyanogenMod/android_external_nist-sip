@@ -49,7 +49,7 @@ import android.widget.ListAdapter;
 import com.android.internal.telephony.CallForwardInfo;
 import com.android.internal.telephony.CommandsInterface;
 import com.android.internal.telephony.Phone;
-import com.android.internal.telephony.SipPhoneFactory;
+import com.android.internal.telephony.sip.SipPhoneFactory;
 import com.android.internal.telephony.cdma.TtyIntent;
 
 import java.util.Collection;
