@@ -31,9 +31,6 @@ import javax.sip.SipException;
 abstract class SipCallBase extends Call {
     private static final int MAX_CONNECTIONS_PER_CALL = 5;
 
-    protected List<Connection> connections = new ArrayList<Connection>();
-    /*package*/ //SipCallTracker owner;
-
     private static State stateFromDCState (DriverCall.State dcState) {
         switch (dcState) {
             case ACTIVE:        return State.ACTIVE;
@@ -46,10 +43,7 @@ abstract class SipCallBase extends Call {
         }
     }
 
-
-    //SipCall(SipPhone phone) {
-        //this.owner = owner;
-    //}
+    protected List<Connection> connections = new ArrayList<Connection>();
 
     public void dispose() {
     }
@@ -157,7 +151,7 @@ abstract class SipCallBase extends Call {
         state = State.DISCONNECTING;
     }
 
-    void clearDisconnected() {
+    protected void clearDisconnected() {
         for (Iterator<Connection> it = connections.iterator(); it.hasNext(); ) {
             Connection c = it.next();
             if (c.getState() == State.DISCONNECTED) it.remove();

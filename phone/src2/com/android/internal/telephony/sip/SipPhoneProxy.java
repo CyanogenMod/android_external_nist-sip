@@ -299,7 +299,6 @@ public class SipPhoneProxy implements Phone {
     }
 
     public Call getForegroundCall() {
-        Log.v("SipPhoneProxy", "getForegroundCall: " + sPhoneProxy + " proxes " + sPhoneProxy.mActivePhone);
         return mActivePhone.getForegroundCall();
     }
 

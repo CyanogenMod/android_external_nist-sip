@@ -68,6 +68,7 @@ import com.android.internal.telephony.TelephonyProperties;
 //import com.android.internal.telephony.UUSInfo;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 abstract class SipPhoneBase extends PhoneBase {
@@ -154,7 +155,7 @@ abstract class SipPhoneBase extends PhoneBase {
     }
 
     public List<? extends MmiCode> getPendingMmiCodes() {
-        return null;
+        return new ArrayList<MmiCode>(0);
     }
 
     public DataState getDataConnectionState() {
