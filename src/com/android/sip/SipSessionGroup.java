@@ -464,7 +464,11 @@ class SipSessionGroup implements SipListener {
         }
 
         private boolean processExceptions(EventObject evt) throws SipException {
-            if (isRequestEvent(Request.CANCEL, evt)) {
+            if (isRequestEvent(Request.BYE, evt)) {
+                mSipHelper.sendResponse((RequestEvent) evt, Response.OK);
+                endCallNormally();
+                return true;
+            } else if (isRequestEvent(Request.CANCEL, evt)) {
                 mSipHelper.sendResponse((RequestEvent) evt,
                         Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST);
                 return true;

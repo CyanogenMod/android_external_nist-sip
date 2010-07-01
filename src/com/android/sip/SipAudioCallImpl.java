@@ -465,6 +465,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
 
     public synchronized void sendDtmf(int code, Message result) {
         if ((mSipSession != null) && (SipSessionState.IN_CALL == getState())) {
+            Log.v(TAG, "send DTMF: " + code);
             mRtpSession.sendDtmf(code);
         }
         if (result != null) result.sendToTarget();

@@ -110,6 +110,25 @@ public class SipPhone extends SipPhoneBase {
         //        new Integer(Phone.PHONE_TYPE_GSM).toString());
     }
 
+    void migrateFrom(SipPhone from) {
+        migrate(mPreciseCallStateRegistrants, from.mPreciseCallStateRegistrants);
+        migrate(mNewRingingConnectionRegistrants, from.mNewRingingConnectionRegistrants);
+        migrate(mIncomingRingRegistrants, from.mIncomingRingRegistrants);
+        migrate(mDisconnectRegistrants, from.mDisconnectRegistrants);
+        migrate(mServiceStateRegistrants, from.mServiceStateRegistrants);
+        migrate(mMmiCompleteRegistrants, from.mMmiCompleteRegistrants);
+        migrate(mMmiRegistrants, from.mMmiRegistrants);
+        migrate(mUnknownConnectionRegistrants, from.mUnknownConnectionRegistrants);
+        migrate(mSuppServiceFailedRegistrants, from.mSuppServiceFailedRegistrants);
+    }
+
+    void migrate(RegistrantList to, RegistrantList from) {
+        from.removeCleared();
+        for (int i = 0, n = from.size(); i < n; i++) {
+            to.add((Registrant) from.get(i));
+        }
+    }
+
     public String getPhoneName() {
         return mProfile.getProfileName();
     }
@@ -120,6 +139,8 @@ public class SipPhone extends SipPhoneBase {
             if (ringingCall.getState().isAlive()) return false;
 
             SipAudioCall sipAudioCall = (SipAudioCall) incomingCall;
+            Log.v(LOG_TAG, "  ++++++ taking call from: "
+                    + sipAudioCall.getPeerProfile().getUriString());
             String localUri = sipAudioCall.getLocalProfile().getUriString();
             if (localUri.equals(mProfile.getUriString())) {
                 if (foregroundCall.getState().isAlive()) {
@@ -127,6 +148,7 @@ public class SipPhone extends SipPhoneBase {
                 } else {
                     ringingCall.ringOn(sipAudioCall);
                 }
+                updatePhoneState();
                 return true;
             }
             return false;
@@ -200,6 +222,7 @@ public class SipPhone extends SipPhoneBase {
             notifyPreciseCallStateChanged();
             return c;
         } catch (SipException e) {
+            Log.e(LOG_TAG, "dial()", e);
             throw new CallStateException("dial error: " + e);
         }
     }
@@ -385,19 +408,23 @@ public class SipPhone extends SipPhoneBase {
         }
 
         public void waitOn(SipAudioCall sipAudioCall) {
+            mSipAudioCall = sipAudioCall;
             SipProfile callee = sipAudioCall.getPeerProfile();
             SipConnection c = new SipConnection(this, callee);
-            mSipAudioCall = sipAudioCall;
             connections.add(c);
             state = State.WAITING;
+            c.take(sipAudioCall);
+            notifyNewRingingConnectionP(c);
         }
 
         public void ringOn(SipAudioCall sipAudioCall) {
+            mSipAudioCall = sipAudioCall;
             SipProfile callee = sipAudioCall.getPeerProfile();
             SipConnection c = new SipConnection(this, callee);
-            mSipAudioCall = sipAudioCall;
             connections.add(c);
             state = State.INCOMING;
+            c.take(sipAudioCall);
+            notifyNewRingingConnectionP(c);
         }
 
         public void rejectCall() throws CallStateException {
@@ -444,7 +471,7 @@ public class SipPhone extends SipPhoneBase {
 
         public void sendDtmf(char c) {
             if (mSipAudioCall != null) {
-                mSipAudioCall.sendDtmf((int) c);
+                mSipAudioCall.sendDtmf((int) (c - '0'));
             }
         }
 
@@ -502,6 +529,9 @@ public class SipPhone extends SipPhoneBase {
             public void onChanged(SipAudioCall call) {
                 synchronized (SipPhone.class) {
                     mState = getCallStateFrom(call);
+                    if (mState == Call.State.INCOMING) {
+                        mState = mOwner.getState(); // INCOMING or WAITING
+                    }
                     mOwner.onConnectionStateChanged(SipConnection.this);
                     Log.v(LOG_TAG, "++******++ connection state changed: "
                             + mPeer.getUriString() + ": " + call.getState()
@@ -519,6 +549,7 @@ public class SipPhone extends SipPhoneBase {
         public void take(SipAudioCall sipAudioCall) {
             mSipAudioCall = sipAudioCall;
             sipAudioCall.setListener(mAdapter); // call back to set state
+            mState = mOwner.getState();
         }
 
         public void changeOwner(SipCall owner) {
@@ -532,7 +563,8 @@ public class SipPhone extends SipPhoneBase {
         public void dial() throws SipException {
             mState = Call.State.DIALING;
             mSipAudioCall = mSipManager.makeAudioCall(mContext, mProfile,
-                    mPeer, mAdapter);
+                    mPeer, null);
+            mSipAudioCall.setListener(mAdapter);
         }
 
         public SipCall getCall() {

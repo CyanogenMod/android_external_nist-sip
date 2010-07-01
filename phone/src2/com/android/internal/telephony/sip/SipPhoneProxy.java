@@ -48,8 +48,17 @@ public class SipPhoneProxy implements Phone {
     private SipPhoneProxy() {
     }
 
+    public void onNewCall(Object call) {
+        if (mActivePhone.canTake(call)) {
+            Log.v("SipPhoneProxy", "onNewCall(): call taken: " + call);
+        } else {
+            Log.v("SipPhoneProxy", "onNewCall(): call dropped: " + call);
+        }
+    }
+
     public void setPhone(SipPhone phone) {
         if (phone == null) return;
+        if (mActivePhone != null) phone.migrateFrom(mActivePhone);
         mActivePhone = phone;
         Log.v("SipPhoneProxy", "setPhone: " + this + " proxes " + phone);
     }

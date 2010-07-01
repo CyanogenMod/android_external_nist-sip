@@ -23,8 +23,11 @@ import com.android.internal.telephony.sip.SipPhone;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.net.sip.SipAudioCall;
 import android.net.sip.SipManager;
 import android.util.Log;
+
+import javax.sip.SipException;
 
 /**
  * Broadcast receiver that handles SIP-related intents.
@@ -33,10 +36,17 @@ public class SipBroadcastReceiver extends BroadcastReceiver {
     private static final String TAG = SipBroadcastReceiver.class.getSimpleName();
 
     @Override
-    public void onReceive(Context context, Intent intent) {
+    public void onReceive(Context context, final Intent intent) {
         String action = intent.getAction();
 
         if (action.equals(SipManager.SIP_INCOMING_CALL_ACTION)) {
+            // TODO: remove background thread when sip service becomes system
+            // service
+            new Thread(new Runnable() {
+                public void run() {
+                    takeCall(intent);
+                }
+            }).start();
             // TODO: bring up InCallScreen
 
             /*
@@ -55,6 +65,17 @@ public class SipBroadcastReceiver extends BroadcastReceiver {
         } else {
             Log.v(TAG, "action not processed: " + action);
             return;
+        }
+    }
+
+    private void takeCall(Intent intent) {
+        Context phoneContext = SipPhoneProxy.getInstance().getContext();
+        try {
+            SipAudioCall sipAudioCall = SipManager.getInstance(phoneContext)
+                    .takeAudioCall(phoneContext, intent, null, false);
+            SipPhoneProxy.getInstance().onNewCall(sipAudioCall);
+        } catch (SipException e) {
+            Log.e(TAG, "process incoming SIP call", e);
         }
     }
 }
