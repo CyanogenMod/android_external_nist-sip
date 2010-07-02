@@ -242,6 +242,12 @@ public class SipCallUi extends Activity implements OnClickListener,
     }
 
     public void onCallBusy(SipAudioCall call) {
+        if (mAudioCall != call) return;
+        mError = new SipException("Line busy");
+        setCallStatus();
+        mAudioCall = null;
+        setAllButtonsEnabled(false, false, false);
+        showToast("Line busy");
     }
 
     public synchronized void onCallEnded(SipAudioCall call) {
