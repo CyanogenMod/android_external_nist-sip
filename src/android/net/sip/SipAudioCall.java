@@ -130,13 +130,24 @@ public interface SipAudioCall {
     }
 
     /**
+     * Sets the listener to listen to the audio call events. The method calls
+     * {@link #setListener(Listener, false)}.
+     *
+     * @param listener to listen to the audio call events of this object
+     * @see #setListener(Listener, boolean)
+     */
+    void setListener(Listener listener);
+
+    /**
      * Sets the listener to listen to the audio call events. A
      * {@link SipAudioCall} can only hold one listener at a time. Subsequent
      * calls to this method override the previous listener.
      *
      * @param listener to listen to the audio call events of this object
+     * @param callbackImmediately set to true if the caller wants to be called
+     *      back immediately on the current state
      */
-    void setListener(Listener listener);
+    void setListener(Listener listener, boolean callbackImmediately);
 
     /**
      * Closes this object. The object is not usable after being closed.

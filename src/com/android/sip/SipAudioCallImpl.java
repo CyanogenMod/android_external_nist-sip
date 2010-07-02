@@ -90,9 +90,14 @@ public class SipAudioCallImpl extends SipSessionAdapter
         mLocalProfile = localProfile;
     }
 
-    public synchronized void setListener(SipAudioCall.Listener listener) {
+    public void setListener(SipAudioCall.Listener listener) {
+        setListener(listener, false);
+    }
+
+    public void setListener(SipAudioCall.Listener listener,
+            boolean callbackImmediately) {
         mListener = listener;
-        if (listener == null) return;
+        if ((listener == null) || !callbackImmediately) return;
         try {
             SipSessionState state = getState();
             switch (state) {
@@ -102,6 +107,9 @@ public class SipAudioCallImpl extends SipSessionAdapter
             case INCOMING_CALL:
                 listener.onRinging(this, getPeerProfile(mSipSession));
                 startRinging();
+                break;
+            case OUTGOING_CALL:
+                listener.onCalling(this);
                 break;
             default:
                 listener.onError(this, "wrong state to attach call: " + state);
@@ -161,11 +169,12 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     @Override
-    public synchronized void onCalling(ISipSession session) {
+    public void onCalling(ISipSession session) {
         Log.d(TAG, "calling... " + session);
-        if (mListener != null) {
+        Listener listener = mListener;
+        if (listener != null) {
             try {
-                mListener.onCalling(SipAudioCallImpl.this);
+                listener.onCalling(SipAudioCallImpl.this);
             } catch (Throwable t) {
                 Log.e(TAG, "onCalling()", t);
             }
@@ -173,12 +182,13 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     @Override
-    public synchronized void onRingingBack(ISipSession session) {
+    public void onRingingBack(ISipSession session) {
         Log.d(TAG, "sip call ringing back: " + session);
         if (!mInCall) startRingbackTone();
-        if (mListener != null) {
+        Listener listener = mListener;
+        if (listener != null) {
             try {
-                mListener.onRingingBack(SipAudioCallImpl.this);
+                listener.onRingingBack(SipAudioCallImpl.this);
             } catch (Throwable t) {
                 Log.e(TAG, "onRingingBack()", t);
             }
@@ -209,24 +219,29 @@ public class SipAudioCallImpl extends SipSessionAdapter
         }
     }
 
-    @Override
-    public synchronized void onCallEstablished(ISipSession session,
-            byte[] sessionDescription) {
+    private synchronized void establishCall(byte[] sessionDescription) {
         stopRingbackTone();
         stopRinging();
         mChangingSession = false;
         try {
             SdpSessionDescription sd =
                     new SdpSessionDescription(sessionDescription);
-            Log.d(TAG, "sip call established: " + session + ": " + sd);
+            Log.d(TAG, "sip call established: " + sd);
             startCall(sd);
             mInCall = true;
         } catch (SdpException e) {
             Log.e(TAG, "createSessionDescription()", e);
         }
-        if (mListener != null) {
+    }
+
+    @Override
+    public void onCallEstablished(ISipSession session,
+            byte[] sessionDescription) {
+        establishCall(sessionDescription);
+        Listener listener = mListener;
+        if (listener != null) {
             try {
-                mListener.onCallEstablished(SipAudioCallImpl.this);
+                listener.onCallEstablished(SipAudioCallImpl.this);
             } catch (Throwable t) {
                 Log.e(TAG, "onCallEstablished()", t);
             }
@@ -234,12 +249,13 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     @Override
-    public synchronized void onCallEnded(ISipSession session) {
+    public void onCallEnded(ISipSession session) {
         Log.d(TAG, "sip call ended: " + session);
         close();
-        if (mListener != null) {
+        Listener listener = mListener;
+        if (listener != null) {
             try {
-                mListener.onCallEnded(SipAudioCallImpl.this);
+                listener.onCallEnded(SipAudioCallImpl.this);
             } catch (Throwable t) {
                 Log.e(TAG, "onCallEnded()", t);
             }
@@ -247,12 +263,13 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     @Override
-    public synchronized void onCallBusy(ISipSession session) {
+    public void onCallBusy(ISipSession session) {
         Log.d(TAG, "sip call busy: " + session);
-        mChangingSession = false;
-        if (mListener != null) {
+        close(false);
+        Listener listener = mListener;
+        if (listener != null) {
             try {
-                mListener.onCallBusy(SipAudioCallImpl.this);
+                listener.onCallBusy(SipAudioCallImpl.this);
             } catch (Throwable t) {
                 Log.e(TAG, "onCallBusy()", t);
             }
@@ -260,22 +277,23 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     @Override
-    public synchronized void onCallChangeFailed(ISipSession session,
+    public void onCallChangeFailed(ISipSession session,
             String className, String message) {
         // TODO:
         mChangingSession = false;
     }
 
     @Override
-    public synchronized void onError(ISipSession session, String className,
+    public void onError(ISipSession session, String className,
             String message) {
         Log.d(TAG, "sip session error: " + className + ": " + message);
         // don't stop RTP session on SIP error
         // TODO: what to do if call is on hold
         close(false);
-        if (mListener != null) {
+        Listener listener = mListener;
+        if (listener != null) {
             try {
-                mListener.onError(SipAudioCallImpl.this,
+                listener.onError(SipAudioCallImpl.this,
                         className + ": " + message);
             } catch (Throwable t) {
                 Log.e(TAG, "onError()", t);
@@ -316,7 +334,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
     public synchronized void endCall() throws SipException {
         try {
             stopRinging();
-            mSipSession.endCall();
+            if (mSipSession != null) mSipSession.endCall();
         } catch (Throwable e) {
             throwSipException(e);
         }
