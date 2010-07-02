@@ -119,8 +119,12 @@ public class SipAudioCallImpl extends SipSessionAdapter
         return mHold;
     }
 
-    public synchronized void close() {
-        stopCall(RELEASE_SOCKET);
+    public void close() {
+        close(true);
+    }
+
+    private synchronized void close(boolean closeRtp) {
+        if (closeRtp) stopCall(RELEASE_SOCKET);
         stopRingbackTone();
         stopRinging();
         mSipSession = null;
@@ -268,8 +272,7 @@ public class SipAudioCallImpl extends SipSessionAdapter
         Log.d(TAG, "sip session error: " + className + ": " + message);
         // don't stop RTP session on SIP error
         // TODO: what to do if call is on hold
-        mSipSession = null;
-        mChangingSession = false;
+        close(false);
         if (mListener != null) {
             try {
                 mListener.onError(SipAudioCallImpl.this,

@@ -430,6 +430,14 @@ class SipSessionGroup implements SipListener {
             synchronized (SipSessionGroup.this) {
                 if (isClosed()) return false;
 
+                Dialog dialog = null;
+                if (evt instanceof RequestEvent) {
+                    dialog = ((RequestEvent) evt).getDialog();
+                } else if (evt instanceof ResponseEvent) {
+                    dialog = ((ResponseEvent) evt).getDialog();
+                }
+                if (dialog != null) mDialog = dialog;
+
                 boolean processed;
 
                 switch (mState) {
@@ -681,7 +689,7 @@ class SipSessionGroup implements SipListener {
                     return true;
                 case Response.PROXY_AUTHENTICATION_REQUIRED:
                     mClientTransaction = mSipHelper.handleChallenge(
-                            (ResponseEvent)evt, mLocalProfile);
+                            (ResponseEvent) evt, mLocalProfile);
                     mDialog = mClientTransaction.getDialog();
                     addSipSession(this);
                     return true;
