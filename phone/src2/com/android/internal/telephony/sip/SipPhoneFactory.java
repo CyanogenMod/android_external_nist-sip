@@ -38,7 +38,8 @@ public class SipPhoneFactory {
 
     public static void makeDefaultPhone(Context context) {
         sContext = context;
-        SipPhoneProxy.getInstance().setPhone(makePhone("sip:fake@fake.domain"));
+        SipPhoneProxy.getInstance().setPhone(
+                makePhone("sip:anonymous@localhost"));
     }
 
     public static Phone getDefaultPhone() {

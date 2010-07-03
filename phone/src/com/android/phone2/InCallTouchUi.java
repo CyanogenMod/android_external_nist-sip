@@ -258,11 +258,14 @@ public class InCallTouchUi extends FrameLayout
                 // if we attempted to answer or reject an incoming call
                 // within the last 500 msec, *don't* show the incoming call
                 // UI even if the phone is still in the RINGING state.
+                /*
                 long now = SystemClock.uptimeMillis();
                 if (now < mLastIncomingCallActionTime + 500) {
-                    log("updateState: Too soon after last action; not drawing!");
+                    log("updateState: Too soon after last action; not drawing!"
+                            + (now - mLastIncomingCallActionTime) + " / " + (mLastIncomingCallActionTime/100));
                     showIncomingCallControls = false;
                 }
+                */
 
                 // TODO: UI design issue: if the device is NOT currently
                 // locked, we probably don't need to make the user
@@ -546,6 +549,7 @@ public class InCallTouchUi extends FrameLayout
                 // ...and also prevent it from reappearing right away.
                 // (This covers up a slow response from the radio; see updateState().)
                 mLastIncomingCallActionTime = SystemClock.uptimeMillis();
+                log("update mLastIncomingCallActionTime = " + (mLastIncomingCallActionTime / 100));
 
                 // Do the appropriate action.
                 if (mInCallScreen != null) {
@@ -564,6 +568,7 @@ public class InCallTouchUi extends FrameLayout
                 // ...and also prevent it from reappearing right away.
                 // (This covers up a slow response from the radio; see updateState().)
                 mLastIncomingCallActionTime = SystemClock.uptimeMillis();
+                log("update mLastIncomingCallActionTime = " + (mLastIncomingCallActionTime / 100));
 
                 // Do the appropriate action.
                 if (mInCallScreen != null) {

@@ -15,16 +15,12 @@
  */
 
 package com.android.internal.telephony.sip;
+
 import android.content.Context;
 import android.net.sip.SipAudioCall;
-import android.os.AsyncResult;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.Message;
-import android.os.PowerManager;
 import android.os.Registrant;
 import android.os.SystemClock;
-import android.util.Config;
 import android.util.Log;
 import android.telephony.PhoneNumberUtils;
 import android.telephony.ServiceState;
@@ -79,8 +75,6 @@ abstract class SipConnectionBase extends Connection {
     private DisconnectCause mCause = DisconnectCause.NOT_DISCONNECTED;
     private PostDialState postDialState = PostDialState.NOT_STARTED;
 
-    private Handler h;
-
     SipConnectionBase(String address, String calleeSipUri) {
         mAddress = address;
         dialString = calleeSipUri;
@@ -91,82 +85,22 @@ abstract class SipConnectionBase extends Connection {
         createTime = System.currentTimeMillis();
     }
 
-    // TODO
-    // This is probably an MT call that we first saw in a CLCC response
-    /*
-    SipConnectionBase(Context context, DriverCall dc, SipCallTracker ct, int index) {
-        owner = ct;
-
-        mAddress = dc.number;
-
-        isIncoming = dc.isMT;
-        createTime = System.currentTimeMillis();
-        //numberPresentation = dc.numberPresentation;
-
-        this.index = index;
-
-        //parent = parentFromDCState (dc.state);
-        parent.attach(this, dc);
-    }
-
-    // TODO
-    // This is an MO call, created when dialing
-    SipConnectionBase(Context context, String dialString, SipCallTracker ct, SipCall parent) {
-        owner = ct;
-
-        this.dialString = dialString;
-
-        this.mAddress = PhoneNumberUtils.extractNetworkPortionAlt(dialString);
-        this.postDialString = PhoneNumberUtils.extractPostDialPortion(dialString);
-
-        index = -1;
-
-        isIncoming = false;
-        createTime = System.currentTimeMillis();
-
-        this.parent = parent;
-        parent.attachFake(this, SipCall.State.DIALING);
-    }
-    */
-
-    public void dispose() {
-    }
-
-    static boolean equalsHandlesNulls (Object a, Object b) {
-        return (a == null) ? (b == null) : a.equals (b);
-    }
-
-    /*package*/ boolean compareTo(DriverCall c) {
-        // On mobile originated (MO) calls, the phone number may have changed
-        // due to a SIM Toolkit call control modification.
-        //
-        // We assume we know when MO calls are created (since we created them)
-        // and therefore don't need to compare the phone number anyway.
-        if (! (isIncoming || c.isMT)) return true;
-
-        // ... but we can compare phone numbers on MT calls, and we have
-        // no control over when they begin, so we might as well
-
-        String cAddress = PhoneNumberUtils.stringFromStringAndTOA(c.number, c.TOA);
-        return isIncoming == c.isMT && equalsHandlesNulls(mAddress, cAddress);
-    }
-
-    public String getAddress() {
-        return mAddress;
-    }
-
+    @Override
     public long getCreateTime() {
         return createTime;
     }
 
+    @Override
     public long getConnectTime() {
         return connectTime;
     }
 
+    @Override
     public long getDisconnectTime() {
         return disconnectTime;
     }
 
+    @Override
     public long getDurationMillis() {
         if (connectTimeReal == 0) {
             return 0;
@@ -177,6 +111,7 @@ abstract class SipConnectionBase extends Connection {
         }
     }
 
+    @Override
     public long getHoldDurationMillis() {
         if (getState() != Call.State.HOLDING) {
             // If not holding, return 0
@@ -186,6 +121,7 @@ abstract class SipConnectionBase extends Connection {
         }
     }
 
+    @Override
     public DisconnectCause getDisconnectCause() {
         return mCause;
     }
@@ -194,92 +130,24 @@ abstract class SipConnectionBase extends Connection {
         mCause = cause;
     }
 
-    public boolean isIncoming() {
-        return isIncoming;
-    }
-
-    public Call.State getState() {
-        if (disconnected) {
-            return Call.State.DISCONNECTED;
-        } else {
-            return super.getState();
-        }
-    }
-
+    @Override
     public PostDialState getPostDialState() {
         return postDialState;
     }
 
+    @Override
     public void proceedAfterWaitChar() {
-        if (postDialState != PostDialState.WAIT) {
-            Log.w(LOG_TAG, "SipConnection.proceedAfterWaitChar(): Expected "
-                + "getPostDialState() to be WAIT but was " + postDialState);
-            return;
-        }
-
-        setPostDialState(PostDialState.STARTED);
-
-        processNextPostDialChar();
+        // TODO
     }
 
+    @Override
     public void proceedAfterWildChar(String str) {
-        if (postDialState != PostDialState.WILD) {
-            Log.w(LOG_TAG, "SipConnection.proceedAfterWaitChar(): Expected "
-                + "getPostDialState() to be WILD but was " + postDialState);
-            return;
-        }
-
-        setPostDialState(PostDialState.STARTED);
-
-        if (false) {
-            boolean playedTone = false;
-            int len = (str != null ? str.length() : 0);
-
-            for (int i=0; i<len; i++) {
-                char c = str.charAt(i);
-                Message msg = null;
-
-                if (i == len-1) {
-                    msg = h.obtainMessage(EVENT_DTMF_DONE);
-                }
-
-                if (PhoneNumberUtils.is12Key(c)) {
-                    sendDtmf(c, msg);
-                    playedTone = true;
-                }
-            }
-
-            if (!playedTone) {
-                processNextPostDialChar();
-            }
-        } else {
-            // make a new postDialString, with the wild char replacement string
-            // at the beginning, followed by the remaining postDialString.
-
-            StringBuilder buf = new StringBuilder(str);
-            buf.append(postDialString.substring(nextPostDialChar));
-            postDialString = buf.toString();
-            nextPostDialChar = 0;
-            if (Phone.DEBUG_PHONE) {
-                log("proceedAfterWildChar: new postDialString is " +
-                        postDialString);
-            }
-
-            processNextPostDialChar();
-        }
+        // TODO
     }
 
+    @Override
     public void cancelPostDial() {
-        setPostDialState(PostDialState.CANCELLED);
-    }
-
-    /**
-     * Called when this Connection is being hung up locally (eg, user pressed "end")
-     * Note that at this point, the hangup request has been dispatched to the radio
-     * but no response has yet been received so update() has not yet been called
-     */
-    void onHangupLocal() {
-        mCause = DisconnectCause.LOCAL;
+        // TODO
     }
 
     protected abstract Phone getPhone();
@@ -333,181 +201,7 @@ abstract class SipConnectionBase extends Connection {
         }
     }
 
-    void onRemoteDisconnect(int causeCode) {
-        onDisconnect(disconnectCauseFromCode(causeCode));
-    }
-
-    /** Called when the radio indicates the connection has been disconnected */
-    void onDisconnect(DisconnectCause cause) {
-        /*
-        mCause = cause;
-
-        if (!disconnected) {
-            index = -1;
-
-            disconnectTime = System.currentTimeMillis();
-            duration = SystemClock.elapsedRealtime() - connectTimeReal;
-            disconnected = true;
-
-            if (Config.LOGD) Log.d(LOG_TAG,
-                    "[SipConn] onDisconnect: cause=" + cause);
-
-            owner.phone.notifyDisconnect(this);
-
-            if (parent != null) {
-                parent.connectionDisconnected(this);
-            }
-        }
-        */
-    }
-
-    // Returns true if state has changed, false if nothing changed
-    /*
-    boolean update (DriverCall dc) {
-        SipCall newParent;
-        boolean changed = false;
-        boolean wasConnectingInOrOut = isConnectingInOrOut();
-        boolean wasHolding = (getState() == SipCall.State.HOLDING);
-
-        newParent = parentFromDCState(dc.state);
-
-        if (!equalsHandlesNulls(mAddress, dc.number)) {
-            if (Phone.DEBUG_PHONE) log("update: phone # changed!");
-            mAddress = dc.number;
-            changed = true;
-        }
-
-        if (newParent != parent) {
-            if (parent != null) {
-                parent.detach(this);
-            }
-            newParent.attach(this, dc);
-            parent = newParent;
-            changed = true;
-        } else {
-            boolean parentStateChange;
-            parentStateChange = parent.update (this, dc);
-            changed = changed || parentStateChange;
-        }
-
-        // Some state-transition events
-
-        if (Phone.DEBUG_PHONE) log(
-                "update: parent=" + parent +
-                ", hasNewParent=" + (newParent != parent) +
-                ", wasConnectingInOrOut=" + wasConnectingInOrOut +
-                ", wasHolding=" + wasHolding +
-                ", isConnectingInOrOut=" + isConnectingInOrOut() +
-                ", changed=" + changed);
-
-
-        if (wasConnectingInOrOut && !isConnectingInOrOut()) {
-            onConnectedInOrOut();
-        }
-
-        if (changed && !wasHolding && (getState() == SipCall.State.HOLDING)) {
-            // We've transitioned into HOLDING
-            onStartedHolding();
-        }
-
-        return changed;
-    }
-    */
-
-    /**
-     * Called when this Connection is in the foregroundCall
-     * when a dial is initiated.
-     * We know we're ACTIVE, and we know we're going to end up
-     * HOLDING in the backgroundCall
-     */
-    void fakeHoldBeforeDial() {
-        /*
-        if (parent != null) {
-            parent.detach(this);
-        }
-
-        parent = owner.backgroundCall;
-        parent.attachFake(this, SipCall.State.HOLDING);
-
-        onStartedHolding();
-        */
-    }
-
-    int getSipIndex() throws CallStateException {
-        if (index >= 0) {
-            return index + 1;
-        } else {
-            throw new CallStateException ("Sip index not yet assigned");
-        }
-    }
-
-    /**
-     * An incoming or outgoing call has connected
-     */
-    void onConnectedInOrOut() {
-        connectTime = System.currentTimeMillis();
-        connectTimeReal = SystemClock.elapsedRealtime();
-        duration = 0;
-
-        // bug #678474: incoming call interpreted as missed call, even though
-        // it sounds like the user has picked up the call.
-        if (Phone.DEBUG_PHONE) {
-            log("onConnectedInOrOut: connectTime=" + connectTime);
-        }
-
-        if (!isIncoming) {
-            // outgoing calls only
-            processNextPostDialChar();
-        }
-    }
-
-    private void onStartedHolding() {
-        holdingStartTime = SystemClock.elapsedRealtime();
-    }
-
-    private void sendDtmf(char c, Message result) {
-        mSipAudioCall.sendDtmf(c, result);
-    }
-
-    /**
-     * Performs the appropriate action for a post-dial char, but does not
-     * notify application. returns false if the character is invalid and
-     * should be ignored
-     */
-    private boolean processPostDialChar(char c) {
-        if (PhoneNumberUtils.is12Key(c)) {
-            sendDtmf(c, h.obtainMessage(EVENT_DTMF_DONE));
-        } else if (c == PhoneNumberUtils.PAUSE) {
-            // From TS 22.101:
-
-            // "The first occurrence of the "DTMF Control Digits Separator"
-            //  shall be used by the ME to distinguish between the addressing
-            //  digits (i.e. the phone number) and the DTMF digits...."
-
-            if (nextPostDialChar == 1) {
-                // The first occurrence.
-                // We don't need to pause here, but wait for just a bit anyway
-                h.sendMessageDelayed(h.obtainMessage(EVENT_PAUSE_DONE),
-                                            PAUSE_DELAY_FIRST_MILLIS);
-            } else {
-                // It continues...
-                // "Upon subsequent occurrences of the separator, the UE shall
-                //  pause again for 3 seconds (\u00B1 20 %) before sending any
-                //  further DTMF digits."
-                h.sendMessageDelayed(h.obtainMessage(EVENT_PAUSE_DONE),
-                                            PAUSE_DELAY_MILLIS);
-            }
-        } else if (c == PhoneNumberUtils.WAIT) {
-            setPostDialState(PostDialState.WAIT);
-        } else if (c == PhoneNumberUtils.WILD) {
-            setPostDialState(PostDialState.WILD);
-        } else {
-            return false;
-        }
-
-        return true;
-    }
-
+    @Override
     public String getRemainingPostDialString() {
         if (postDialState == PostDialState.CANCELLED
             || postDialState == PostDialState.COMPLETE
@@ -517,116 +211,6 @@ abstract class SipConnectionBase extends Connection {
         }
 
         return postDialString.substring(nextPostDialChar);
-    }
-
-    private void processNextPostDialChar() {
-        char c = 0;
-        Registrant postDialHandler;
-
-        if (postDialState == PostDialState.CANCELLED) {
-            //Log.v("Sip", "##### processNextPostDialChar: postDialState == CANCELLED, bail");
-            return;
-        }
-
-        if (postDialString == null ||
-                postDialString.length() <= nextPostDialChar) {
-            setPostDialState(PostDialState.COMPLETE);
-
-            // notifyMessage.arg1 is 0 on complete
-            c = 0;
-        } else {
-            setPostDialState(PostDialState.STARTED);
-
-            c = postDialString.charAt(nextPostDialChar++);
-
-            boolean isValid = processPostDialChar(c);
-
-            if (!isValid) {
-                // Will call processNextPostDialChar
-                h.obtainMessage(EVENT_NEXT_POST_DIAL).sendToTarget();
-                // Don't notify application
-                Log.e("Sip", "processNextPostDialChar: c=" + c + " isn't valid!");
-                return;
-            }
-        }
-
-        // TODO
-        /*
-        postDialHandler = owner.phone.mPostDialHandler;
-
-        Message notifyMessage;
-
-        if (postDialHandler != null
-                && (notifyMessage = postDialHandler.messageForRegistrant()) != null) {
-            // The AsyncResult.result is the Connection object
-            PostDialState state = postDialState;
-            AsyncResult ar = AsyncResult.forMessage(notifyMessage);
-            ar.result = this;
-            ar.userObj = state;
-
-            // arg1 is the character that was/is being processed
-            notifyMessage.arg1 = c;
-
-            //Log.v("Sip", "##### processNextPostDialChar: send msg to postDialHandler, arg1=" + c);
-            notifyMessage.sendToTarget();
-        }
-        */
-    }
-
-
-    /** "connecting" means "has never been ACTIVE" for both incoming
-     *  and outgoing calls
-     */
-    private boolean isConnectingInOrOut() {
-        // TODO
-        return false;
-        /*
-        return parent == null || parent == owner.ringingCall
-            || parent.state == SipCall.State.DIALING
-            || parent.state == SipCall.State.ALERTING;
-            */
-    }
-
-/*
-    private SipCall parentFromDCState (DriverCall.State state) {
-        switch (state) {
-            case ACTIVE:
-            case DIALING:
-            case ALERTING:
-                return owner.foregroundCall;
-            //break;
-
-            case HOLDING:
-                return owner.backgroundCall;
-            //break;
-
-            case INCOMING:
-            case WAITING:
-                return owner.ringingCall;
-            //break;
-
-            default:
-                throw new RuntimeException("illegal call state: " + state);
-        }
-    }
-    */
-
-    /**
-     * Set post dial state and acquire wake lock while switching to "started"
-     * state, the wake lock will be released if state switches out of "started"
-     * state or after WAKE_LOCK_TIMEOUT_MILLIS.
-     * @param s new PostDialState
-     */
-    private void setPostDialState(PostDialState s) {
-        if (postDialState != PostDialState.STARTED
-                && s == PostDialState.STARTED) {
-            Message msg = h.obtainMessage(EVENT_WAKE_LOCK_TIMEOUT);
-            h.sendMessageDelayed(msg, WAKE_LOCK_TIMEOUT_MILLIS);
-        } else if (postDialState == PostDialState.STARTED
-                && s != PostDialState.STARTED) {
-            h.removeMessages(EVENT_WAKE_LOCK_TIMEOUT);
-        }
-        postDialState = s;
     }
 
     private void log(String msg) {
@@ -646,24 +230,4 @@ abstract class SipConnectionBase extends Connection {
         return null;
     }
     */
-
-    private class MyHandler extends Handler {
-        MyHandler(Looper l) {
-            super(l);
-        }
-
-        public void handleMessage(Message msg) {
-
-            switch (msg.what) {
-                case EVENT_NEXT_POST_DIAL:
-                case EVENT_DTMF_DONE:
-                case EVENT_PAUSE_DONE:
-                    processNextPostDialChar();
-                    break;
-                case EVENT_WAKE_LOCK_TIMEOUT:
-                    //releaseWakeLock();
-                    break;
-            }
-        }
-    }
 }

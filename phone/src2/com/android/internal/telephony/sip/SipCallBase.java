@@ -31,24 +31,12 @@ import javax.sip.SipException;
 abstract class SipCallBase extends Call {
     private static final int MAX_CONNECTIONS_PER_CALL = 5;
 
-    private static State stateFromDCState (DriverCall.State dcState) {
-        switch (dcState) {
-            case ACTIVE:        return State.ACTIVE;
-            case HOLDING:       return State.HOLDING;
-            case DIALING:       return State.DIALING;
-            case ALERTING:      return State.ALERTING;
-            case INCOMING:      return State.INCOMING;
-            case WAITING:       return State.WAITING;
-            default:            throw new RuntimeException ("illegal call state:" + dcState);
-        }
-    }
-
     protected List<Connection> connections = new ArrayList<Connection>();
+
+    protected abstract void setState(State newState);
 
     public void dispose() {
     }
-
-    /************************** Overridden from Call *************************/
 
     public List<Connection> getConnections() {
         // FIXME should return Collections.unmodifiableList();
@@ -61,20 +49,6 @@ abstract class SipCallBase extends Call {
 
     public String toString() {
         return state.toString();
-    }
-
-    //***** Called from SipConnection
-
-    /*package*/ void attach(Connection conn, DriverCall dc) {
-        connections.add(conn);
-
-        state = stateFromDCState (dc.state);
-    }
-
-    /*package*/ void attachFake(Connection conn, State state) {
-        connections.add(conn);
-
-        this.state = state;
     }
 
     /**
@@ -110,20 +84,6 @@ abstract class SipCallBase extends Call {
         }
     }
 
-    /*package*/ boolean update (Connection conn, DriverCall dc) {
-        State newState;
-        boolean changed = false;
-
-        newState = stateFromDCState(dc.state);
-
-        if (newState != state) {
-            state = newState;
-            changed = true;
-        }
-
-        return changed;
-    }
-
     /**
      * @return true if there's no space in this call for additional
      * connections to be added via "conference"
@@ -132,31 +92,12 @@ abstract class SipCallBase extends Call {
         return connections.size() == MAX_CONNECTIONS_PER_CALL;
     }
 
-    //***** Called from SipCallTracker
-
-
-    /**
-     * Called when this Call is being hung up locally (eg, user pressed "end")
-     * Note that at this point, the hangup request has been dispatched to the radio
-     * but no response has yet been received so update() has not yet been called
-     */
-    void onHangupLocal() {
-        for (int i = 0, s = connections.size()
-                ; i < s; i++
-        ) {
-            SipConnectionBase cn = (SipConnectionBase)connections.get(i);
-
-            cn.onHangupLocal();
-        }
-        state = State.DISCONNECTING;
-    }
-
     protected void clearDisconnected() {
         for (Iterator<Connection> it = connections.iterator(); it.hasNext(); ) {
             Connection c = it.next();
             if (c.getState() == State.DISCONNECTED) it.remove();
         }
 
-        if (connections.isEmpty()) state = State.IDLE;
+        if (connections.isEmpty()) setState(State.IDLE);
     }
 }

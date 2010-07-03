@@ -83,6 +83,8 @@ abstract class SipPhoneBase extends PhoneBase {
 
     Registrant mPostDialHandler;
 
+    final RegistrantList mRingbackRegistrants = new RegistrantList();
+
     private State state = State.IDLE;
 
     public SipPhoneBase(Context context, PhoneNotifier notifier) {
@@ -107,6 +109,46 @@ abstract class SipPhoneBase extends PhoneBase {
         return dial(dialString);
     }
     */
+
+    void migrateFrom(SipPhoneBase from) {
+        migrate(mRingbackRegistrants, from.mRingbackRegistrants);
+        migrate(mPreciseCallStateRegistrants, from.mPreciseCallStateRegistrants);
+        migrate(mNewRingingConnectionRegistrants, from.mNewRingingConnectionRegistrants);
+        migrate(mIncomingRingRegistrants, from.mIncomingRingRegistrants);
+        migrate(mDisconnectRegistrants, from.mDisconnectRegistrants);
+        migrate(mServiceStateRegistrants, from.mServiceStateRegistrants);
+        migrate(mMmiCompleteRegistrants, from.mMmiCompleteRegistrants);
+        migrate(mMmiRegistrants, from.mMmiRegistrants);
+        migrate(mUnknownConnectionRegistrants, from.mUnknownConnectionRegistrants);
+        migrate(mSuppServiceFailedRegistrants, from.mSuppServiceFailedRegistrants);
+    }
+
+    static void migrate(RegistrantList to, RegistrantList from) {
+        from.removeCleared();
+        for (int i = 0, n = from.size(); i < n; i++) {
+            to.add((Registrant) from.get(i));
+        }
+    }
+
+    @Override
+    public void registerForRingbackTone(Handler h, int what, Object obj) {
+        mRingbackRegistrants.addUnique(h, what, obj);
+    }
+
+    @Override
+    public void unregisterForRingbackTone(Handler h) {
+        mRingbackRegistrants.remove(h);
+    }
+
+    protected void startRingbackTone() {
+        AsyncResult result = new AsyncResult(null, new Boolean(true), null);
+        mRingbackRegistrants.notifyRegistrants(result);
+    }
+
+    protected void stopRingbackTone() {
+        AsyncResult result = new AsyncResult(null, new Boolean(false), null);
+        mRingbackRegistrants.notifyRegistrants(result);
+    }
 
     public void dispose() {
         mIsTheCurrentActivePhone = false;
