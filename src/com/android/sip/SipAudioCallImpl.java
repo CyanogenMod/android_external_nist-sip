@@ -341,13 +341,6 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     public synchronized void holdCall() throws SipException {
-        if (mHold) return;
-        if (mRtpSession != null) {
-            mHold = true;
-            mRtpSession.stopSending();
-            mRtpSession.stopReceiving();
-        }
-        /*
         try {
             if (mChangingSession) return;
             mChangingSession = true;
@@ -356,7 +349,6 @@ public class SipAudioCallImpl extends SipSessionAdapter
         } catch (Throwable e) {
             throwSipException(e);
         }
-        */
     }
 
     public synchronized void answerCall() throws SipException {
@@ -370,13 +362,6 @@ public class SipAudioCallImpl extends SipSessionAdapter
     }
 
     public synchronized void continueCall() throws SipException {
-        if (!mHold) return;
-        if (mRtpSession != null) {
-            mHold = false;
-            mRtpSession.startSending();
-            mRtpSession.startReceiving();
-        }
-        /*
         try {
             if (mChangingSession) return;
             mChangingSession = true;
@@ -385,7 +370,6 @@ public class SipAudioCallImpl extends SipSessionAdapter
         } catch (Throwable e) {
             throwSipException(e);
         }
-        */
     }
 
     private SessionDescription createOfferSessionDescription() {
