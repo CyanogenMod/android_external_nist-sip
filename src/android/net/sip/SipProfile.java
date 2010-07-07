@@ -16,8 +16,6 @@
 
 package android.net.sip;
 
-import gov.nist.javax.sip.clientauthutils.UserCredentials;
-
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
@@ -37,7 +35,7 @@ import javax.sip.address.URI;
  * Class containing a SIP account, domain and server information.
  * @hide
  */
-public class SipProfile implements UserCredentials, Parcelable, Serializable {
+public class SipProfile implements Parcelable, Serializable {
     private static final long serialVersionUID = 1L;
     private static final int DEFAULT_PORT = 5060;
     private Address mAddress;

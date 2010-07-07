@@ -16,6 +16,8 @@
 
 package com.android.sip;
 
+import gov.nist.javax.sip.clientauthutils.AccountManager;
+import gov.nist.javax.sip.clientauthutils.UserCredentials;
 import gov.nist.javax.sip.header.SIPHeaderNames;
 import gov.nist.javax.sip.header.WWWAuthenticate;
 
@@ -79,9 +81,11 @@ class SipSessionGroup implements SipListener {
     private static final EventObject CONTINUE_CALL
             = new EventObject("Continue call");
 
+    private final SipProfile mLocalProfile;
+    private final String mPassword;
+
     private SipStack mSipStack;
     private SipHelper mSipHelper;
-    private SipProfile mLocalProfile;
     private String mLastNonce;
 
     // session that processes INVITE requests
@@ -92,13 +96,23 @@ class SipSessionGroup implements SipListener {
     private Map<String, SipSessionImpl> mSessionMap =
             new HashMap<String, SipSessionImpl>();
 
-    // throws IOException if cannot assign requested address
-    public SipSessionGroup(String localIp, SipProfile myself)
+    /**
+     * @param myself the local profile with password crossed out
+     * @param password the password of the profile
+     * @throws IOException if cannot assign requested address
+     */
+    public SipSessionGroup(String localIp, SipProfile myself, String password)
             throws SipException, IOException {
-        mLocalIp = localIp;
         mLocalProfile = myself;
+        mPassword = password;
+        reset(localIp);
+    }
+
+    void reset(String localIp) throws SipException, IOException {
+        mLocalIp = localIp;
         if (localIp == null) return;
 
+        SipProfile myself = mLocalProfile;
         SipFactory sipFactory = SipFactory.getInstance();
         Properties properties = new Properties();
         properties.setProperty("javax.sip.STACK_NAME", getStackName());
@@ -123,6 +137,10 @@ class SipSessionGroup implements SipListener {
         }
         Log.d(TAG, " start stack for " + myself.getUriString());
         stack.start();
+
+        mLastNonce = null;
+        mCallReceiverSession = null;
+        mSessionMap.clear();
     }
 
     public SipProfile getLocalProfile() {
@@ -572,7 +590,7 @@ class SipSessionGroup implements SipListener {
                         reset();
                         onRegistrationFailed(createCallbackException(response));
                     } else {
-                        mSipHelper.handleChallenge(event, mLocalProfile);
+                        mSipHelper.handleChallenge(event, getAccountManager());
                         mLastNonce = nonce;
                     }
                     return true;
@@ -585,6 +603,27 @@ class SipSessionGroup implements SipListener {
                 }
             }
             return false;
+        }
+
+        private AccountManager getAccountManager() {
+            return new AccountManager() {
+                public UserCredentials getCredentials(ClientTransaction
+                        challengedTransaction, String realm) {
+                    return new UserCredentials() {
+                        public String getUserName() {
+                            return mLocalProfile.getUserName();
+                        }
+
+                        public String getPassword() {
+                            return mPassword;
+                        }
+
+                        public String getSipDomain() {
+                            return mLocalProfile.getSipDomain();
+                        }
+                    };
+                }
+            };
         }
 
         private String getNonceFromResponse(Response response) {
@@ -689,7 +728,7 @@ class SipSessionGroup implements SipListener {
                     return true;
                 case Response.PROXY_AUTHENTICATION_REQUIRED:
                     mClientTransaction = mSipHelper.handleChallenge(
-                            (ResponseEvent) evt, mLocalProfile);
+                            (ResponseEvent) evt, getAccountManager());
                     mDialog = mClientTransaction.getDialog();
                     addSipSession(this);
                     return true;

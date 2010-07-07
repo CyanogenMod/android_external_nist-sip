@@ -85,27 +85,9 @@ class SipServiceImpl extends ISipService.Stub {
         SipProfile[] profiles = new SipProfile[mSipGroups.size()];
         int i = 0;
         for (SipSessionGroupExt group : mSipGroups.values()) {
-            profiles[i++] = duplicate(group.getLocalProfile());
+            profiles[i++] = group.getLocalProfile();
         }
         return profiles;
-    }
-
-    private SipProfile duplicate(SipProfile p) {
-        try {
-            return new SipProfile.Builder(p.getUserName(), p.getSipDomain())
-                    .setProfileName(p.getProfileName())
-                    .setPassword("*")
-                    .setPort(p.getPort())
-                    .setProtocol(p.getProtocol())
-                    .setOutboundProxy(p.getProxyAddress())
-                    .setSendKeepAlive(p.getSendKeepAlive())
-                    .setAutoRegistration(p.getAutoRegistration())
-                    .setDisplayName("*")
-                    .build();
-        } catch (Exception e) {
-            Log.wtf(TAG, "duplicate()", e);
-            return null;
-        }
     }
 
     public void open(SipProfile localProfile) {
@@ -341,7 +323,9 @@ class SipServiceImpl extends ISipService.Stub {
         public SipSessionGroupExt(SipProfile localProfile,
                 String incomingCallBroadcastAction,
                 ISipSessionListener listener) throws SipException {
-            mSipGroup = createSipSessionGroup(mLocalIp, localProfile);
+            String password = localProfile.getPassword();
+            SipProfile p = duplicate(localProfile);
+            mSipGroup = createSipSessionGroup(mLocalIp, p, password);
             mIncomingCallBroadcastAction = incomingCallBroadcastAction;
             mAutoRegistration.setListener(listener);
         }
@@ -354,17 +338,37 @@ class SipServiceImpl extends ISipService.Stub {
         // at any instant so need to deal with exceptions carefully even when
         // you think you are connected
         private SipSessionGroup createSipSessionGroup(String localIp,
-                SipProfile localProfile) throws SipException {
+                SipProfile localProfile, String password) throws SipException {
             try {
-                return new SipSessionGroup(localIp, localProfile);
+                return new SipSessionGroup(localIp, localProfile, password);
             } catch (IOException e) {
-                FLog.w(TAG, "createSipSessionGroup()", e);
-                // network disconnected; just return null
+                // network disconnected
+                FLog.w(TAG, "createSipSessionGroup(): network disconnected?");
                 if (localIp != null) {
-                    return createSipSessionGroup(null, localProfile);
+                    return createSipSessionGroup(null, localProfile, password);
                 } else {
-                    throw new SipException("should not occur", e);
+                    // recursive
+                    Log.wtf(TAG, "impossible!");
+                    throw new RuntimeException("createSipSessionGroup");
                 }
+            }
+        }
+
+        private SipProfile duplicate(SipProfile p) {
+            try {
+                return new SipProfile.Builder(p.getUserName(), p.getSipDomain())
+                        .setProfileName(p.getProfileName())
+                        .setPassword("*")
+                        .setPort(p.getPort())
+                        .setProtocol(p.getProtocol())
+                        .setOutboundProxy(p.getProxyAddress())
+                        .setSendKeepAlive(p.getSendKeepAlive())
+                        .setAutoRegistration(p.getAutoRegistration())
+                        .setDisplayName(p.getDisplayName())
+                        .build();
+            } catch (Exception e) {
+                Log.wtf(TAG, "duplicate()", e);
+                throw new RuntimeException("duplicate profile", e);
             }
         }
 
@@ -389,8 +393,7 @@ class SipServiceImpl extends ISipService.Stub {
         public void onConnectivityChanged(boolean connected)
                 throws SipException {
             if (connected) {
-                mSipGroup = createSipSessionGroup(mLocalIp,
-                        mSipGroup.getLocalProfile());
+                resetGroup(mLocalIp);
                 if (mOpened) openToReceiveCalls();
             } else {
                 // close mSipGroup but remember mOpened
@@ -398,6 +401,22 @@ class SipServiceImpl extends ISipService.Stub {
                         + mIncomingCallBroadcastAction);
                 mSipGroup.close();
                 mAutoRegistration.stop();
+            }
+        }
+
+        private void resetGroup(String localIp) throws SipException {
+            try {
+                mSipGroup.reset(localIp);
+            } catch (IOException e) {
+                // network disconnected
+                FLog.w(TAG, "resetGroup(): network disconnected?");
+                if (localIp != null) {
+                    resetGroup(localIp);
+                } else {
+                    // recursive
+                    Log.wtf(TAG, "impossible!");
+                    throw new RuntimeException("resetGroup");
+                }
             }
         }
 

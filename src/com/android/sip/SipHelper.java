@@ -19,7 +19,6 @@ package com.android.sip;
 import gov.nist.javax.sip.SipStackExt;
 import gov.nist.javax.sip.clientauthutils.AccountManager;
 import gov.nist.javax.sip.clientauthutils.AuthenticationHelper;
-import gov.nist.javax.sip.clientauthutils.UserCredentials;
 
 import android.net.sip.SessionDescription;
 import android.net.sip.SipProfile;
@@ -223,13 +222,7 @@ class SipHelper {
     }
 
     public ClientTransaction handleChallenge(ResponseEvent responseEvent,
-            final SipProfile userProfile) throws SipException {
-        AccountManager accountManager = new AccountManager() {
-            public UserCredentials getCredentials(ClientTransaction
-                    challengedTransaction, String realm) {
-               return userProfile;
-            }
-        };
+            AccountManager accountManager) throws SipException {
         AuthenticationHelper authenticationHelper =
                 ((SipStackExt) mSipStack).getAuthenticationHelper(
                         accountManager, mHeaderFactory);
