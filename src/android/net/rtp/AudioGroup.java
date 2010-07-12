@@ -77,7 +77,7 @@ public class AudioGroup {
      * @throws IllegalArgumentException if the event is invalid.
      */
     public native synchronized void sendDtmf(int event);
-    
+
     public synchronized void reset() {
         remove(-1);
     }

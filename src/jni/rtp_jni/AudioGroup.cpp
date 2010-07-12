@@ -118,7 +118,7 @@ private:
     int mDtmfStart;
 
     AudioStream *mNext;
-    
+
     friend class AudioGroup;
 };
 
@@ -135,6 +135,7 @@ AudioStream::~AudioStream()
     close(mSocket);
     delete mCodec;
     delete [] mBuffer;
+    LOGD("stream[%d] is dead", mSocket);
 }
 
 bool AudioStream::set(int mode, int socket, sockaddr_storage *remote,
@@ -233,7 +234,7 @@ void AudioStream::encode(int tick, AudioStream *chain)
         mTick += skipped * mInterval;
         mSequence += skipped;
         mTimestamp += skipped * mSampleCount;
-        LOGD("stream[%d] skip %d packets", mSocket, skipped);
+        LOGD("stream[%d] skips %d packets", mSocket, skipped);
     }
 
     tick = mTick;
@@ -267,7 +268,7 @@ void AudioStream::encode(int tick, AudioStream *chain)
         }
         mDtmfEvent = -1;
     }
-    
+
     // It is time to mix streams.
     bool mixed = false;
     int32_t buffer[mSampleCount + 3];
@@ -301,13 +302,13 @@ void AudioStream::encode(int tick, AudioStream *chain)
         send(mSocket, samples, sizeof(samples), MSG_DONTWAIT);
         return;
     }
-    
+
     buffer[0] = htonl(mCodecMagic | mSequence);
     buffer[1] = htonl(mTimestamp);
     buffer[2] = mSsrc;
     int length = mCodec->encode(&buffer[3], samples);
     if (length <= 0) {
-        LOGD("stream[%d] encode error", mSocket);
+        LOGD("stream[%d] encoder error", mSocket);
         return;
     }
     sendto(mSocket, buffer, length + 12, MSG_DONTWAIT, (sockaddr *)&mRemote,
@@ -384,7 +385,7 @@ void AudioStream::decode(int tick)
         }
     }
     if (length != mSampleCount) {
-        LOGD("stream[%d] decode error", mSocket);
+        LOGD("stream[%d] decoder error", mSocket);
         return;
     }
 
@@ -469,7 +470,7 @@ private:
         }
     };
     sp<NetworkThread> mNetworkThread;
-        
+
     class DeviceThread : public Thread
     {
     public:
@@ -518,10 +519,11 @@ AudioGroup::~AudioGroup()
         delete mChain;
         mChain = next;
     }
+    LOGD("group[%d] is dead", mDeviceSocket);
 }
 
 bool AudioGroup::set(int sampleRate, int sampleCount)
-{    
+{
     mEventQueue = epoll_create(2);
     if (mEventQueue == -1) {
         LOGE("epoll_create: %s", strerror(errno));
@@ -592,9 +594,9 @@ bool AudioGroup::set(int sampleRate, int sampleCount)
         LOGE("epoll_ctl: %s", strerror(errno));
         return false;
     }
-    
+
     // Anything else?
-    LOGD("stream[%d] is added into group[%d]", pair[1], pair[0]);
+    LOGD("stream[%d] joins group[%d]", pair[1], pair[0]);
     return true;
 }
 
@@ -607,7 +609,7 @@ bool AudioGroup::setMode(int mode)
         return true;
     }
 
-    LOGD("group[%d] switch mode from %d to %d", mDeviceSocket, mMode, mode);
+    LOGD("group[%d] switches from mode %d to %d", mDeviceSocket, mMode, mode);
     mMode = mode;
 
     mDeviceThread->requestExitAndWait();
@@ -644,7 +646,7 @@ bool AudioGroup::sendDtmf(int event)
     timespec ts;
     ts.tv_sec = 0;
     ts.tv_nsec = 100000000;
-    for (int i = 0; mDtmfEvent != -1 && i < 10; ++i) {
+    for (int i = 0; mDtmfEvent != -1 && i < 20; ++i) {
         nanosleep(&ts, NULL);
     }
     if (mDtmfEvent != -1) {
@@ -674,8 +676,8 @@ bool AudioGroup::add(AudioStream *stream)
         mChain->mNext = stream->mNext;
         return false;
     }
-    
-    LOGD("stream[%d] is added into group[%d]", stream->mSocket, mDeviceSocket);
+
+    LOGD("stream[%d] joins group[%d]", stream->mSocket, mDeviceSocket);
     return true;
 }
 
@@ -687,12 +689,12 @@ bool AudioGroup::remove(int socket)
         AudioStream *target = stream->mNext;
         if (target->mSocket == socket) {
             stream->mNext = target->mNext;
-            LOGD("stream[%d] is removed from group[%d]", socket, mDeviceSocket);
+            LOGD("stream[%d] leaves group[%d]", socket, mDeviceSocket);
             delete target;
             break;
         }
     }
-    
+
     // Do not start network thread if there is only one stream.
     if (!mChain->mNext || !mNetworkThread->start()) {
         return false;
@@ -738,7 +740,7 @@ bool AudioGroup::networkLoop()
     for (int i = 0; i < count; ++i) {
         ((AudioStream *)events[i].data.ptr)->decode(tick);
     }
-    
+
     return true;
 }
 
@@ -758,7 +760,7 @@ bool AudioGroup::deviceLoop()
         uint32_t frameCount = mRecord.frameCount();
         AudioRecord::Buffer input;
         input.frameCount = frameCount;
-        
+
         if (mRecord.obtainBuffer(&input, -1) != NO_ERROR) {
             LOGE("cannot read from AudioRecord");
             return false;
@@ -839,7 +841,7 @@ jint add(JNIEnv *env, jobject thiz, jint mode,
             goto error;
         }
     }
-    
+
     // Add audio stream into audio group.
     if (!group->add(stream)) {
         jniThrowException(env, "java/lang/IllegalStateException",
@@ -851,7 +853,7 @@ jint add(JNIEnv *env, jobject thiz, jint mode,
     env->SetIntField(thiz, gNative, (int)group);
     env->ReleaseStringUTFChars(jCodecName, codecName);
     return socket;
-    
+
 error:
     delete group;
     delete stream;
