@@ -32,6 +32,7 @@ import java.util.List;
 
 /**
  * Temporary. Will be removed after integrating with CallManager.
+ * (TODO)
  * @hide
  */
 public class SipPhoneProxy implements Phone {
@@ -44,6 +45,9 @@ public class SipPhoneProxy implements Phone {
     }
 
     private SipPhone mActivePhone;
+    private CallProxy mRingingCall = new CallProxy();
+    private CallProxy mForegroundCall = new CallProxy();
+    private CallProxy mBackgroundCall = new CallProxy();
 
     private SipPhoneProxy() {
     }
@@ -56,12 +60,27 @@ public class SipPhoneProxy implements Phone {
         }
     }
 
-    public void setPhone(SipPhone phone) {
+    public synchronized void setPhone(SipPhone phone) {
         if (phone == null) return;
         if (mActivePhone != null) phone.migrateFrom(mActivePhone);
         mActivePhone = phone;
-        Log.v("SipPhoneProxy", "setPhone: " + this + " proxes " + phone);
+        mForegroundCall.setTarget(phone.getForegroundCall());
+        mBackgroundCall.setTarget(phone.getBackgroundCall());
+        mRingingCall.setTarget(phone.getRingingCall());
     }
+
+    public synchronized Call getForegroundCall() {
+        return mForegroundCall;
+    }
+
+    public synchronized Call getBackgroundCall() {
+        return mBackgroundCall;
+    }
+
+    public synchronized Call getRingingCall() {
+        return mRingingCall;
+    }
+
 
     public ServiceState getServiceState() {
         return mActivePhone.getServiceState();
@@ -305,18 +324,6 @@ public class SipPhoneProxy implements Phone {
 
     public void clearDisconnected() {
         mActivePhone.clearDisconnected();
-    }
-
-    public Call getForegroundCall() {
-        return mActivePhone.getForegroundCall();
-    }
-
-    public Call getBackgroundCall() {
-        return mActivePhone.getBackgroundCall();
-    }
-
-    public Call getRingingCall() {
-        return mActivePhone.getRingingCall();
     }
 
     public Connection dial(String dialString) throws CallStateException {

@@ -137,16 +137,15 @@ public class SipPhone extends SipPhoneBase {
                 Log.v(LOG_TAG, "acceptCall");
                 // Always unmute when answering a new call
                 setMute(false);
-                // make it foreground
+                // make ringingCall foreground
                 foregroundCall.switchWith(ringingCall);
                 foregroundCall.acceptCall();
             } else if (ringingCall.getState() == Call.State.WAITING) {
-                // TODO: what does this mean?
-                /*
-                Log.v(LOG_TAG, "switchWaitingAndActive");
                 setMute(false);
-                switchWaitingOrHoldingAndActive();
-                */
+                switchHoldingAndActive();
+                // make ringingCall foreground
+                foregroundCall.switchWith(ringingCall);
+                foregroundCall.acceptCall();
             } else {
                 throw new CallStateException("phone not ringing");
             }
@@ -203,12 +202,12 @@ public class SipPhone extends SipPhoneBase {
     }
 
     public void switchHoldingAndActive() throws CallStateException {
+        Log.v(LOG_TAG, " ~~~~~~  switch fg and bg");
         synchronized (SipPhone.class) {
             foregroundCall.switchWith(backgroundCall);
-            if (foregroundCall.getState().isAlive()) foregroundCall.unhold();
             if (backgroundCall.getState().isAlive()) backgroundCall.hold();
-            // TODO: state changes will be notified in callback; will it
-            // confuse PhoneApp during transition?
+            if (foregroundCall.getState().isAlive()) foregroundCall.unhold();
+            // state changes will be notified in callback
         }
     }
 
@@ -469,13 +468,12 @@ public class SipPhone extends SipPhoneBase {
                 state = newState;
                 updatePhoneState();
                 notifyPreciseCallStateChanged();
-
             }
         }
 
         private void onConnectionStateChanged(SipConnection conn) {
             // this can be called back when a conf call is formed
-            if ((state != State.ACTIVE) && (state != State.WAITING)) {
+            if (state != State.ACTIVE) {
                 setState(conn.getState());
             }
         }
@@ -590,9 +588,16 @@ public class SipPhone extends SipPhoneBase {
         public Object getUserData() {
             Object o = super.getUserData();
             if (o == null) {
-                CallerInfo info = new CallerInfo();
-                info.name = mPeer.getUserName();
-                info.phoneNumber = getAddress();
+                // FIXME: lookup contact with SIP URI?
+                CallerInfo info = CallerInfo.getCallerInfo(
+                        mContext, mPeer.getUserName());
+                if (info == null) {
+                    info = new CallerInfo();
+                    String name = mPeer.getDisplayName();
+                    if (TextUtils.isEmpty(name)) name = mPeer.getUserName();
+                    info.name = name;
+                    info.phoneNumber = getAddress();
+                }
                 setUserData(info);
                 o = info;
             }
