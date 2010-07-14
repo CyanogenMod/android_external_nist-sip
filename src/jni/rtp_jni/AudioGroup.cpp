@@ -543,8 +543,15 @@ bool AudioGroup::set(int sampleRate, int sampleCount)
         return false;
     }
     LOGD("reported frame count: output %d, input %d", output, input);
+
     output = (output + sampleCount - 1) / sampleCount * sampleCount;
+    if (output < sampleCount * 3) {
+        output = sampleCount * 3;
+    }
     input = (input + sampleCount - 1) / sampleCount * sampleCount;
+    if (input < sampleCount * 3) {
+        input = sampleCount * 3;
+    }
     LOGD("adjusted frame count: output %d, input %d", output, input);
 
     // Initialize AudioTrack and AudioRecord.
@@ -579,7 +586,7 @@ bool AudioGroup::set(int sampleRate, int sampleCount)
     // Give device socket a reasonable timeout and buffer size.
     timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 1000 * sampleCount / sampleRate * 1000;
+    tv.tv_usec = 1000 * sampleCount / sampleRate * 500;
     if (setsockopt(pair[0], SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) ||
         setsockopt(pair[0], SOL_SOCKET, SO_RCVBUF, &output, sizeof(output))) {
         LOGE("setsockopt: %s", strerror(errno));
