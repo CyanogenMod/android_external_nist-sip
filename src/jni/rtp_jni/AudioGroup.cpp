@@ -623,12 +623,9 @@ bool AudioGroup::set(int sampleRate, int sampleCount)
     LOGD("reported frame count: output %d, input %d", output, input);
 
     output = (output + sampleCount - 1) / sampleCount * sampleCount;
-    if (output < sampleCount * 3) {
-        output = sampleCount * 3;
-    }
     input = (input + sampleCount - 1) / sampleCount * sampleCount;
-    if (input < sampleCount * 3) {
-        input = sampleCount * 3;
+    if (input < output * 2) {
+        input = output * 2;
     }
     LOGD("adjusted frame count: output %d, input %d", output, input);
 
