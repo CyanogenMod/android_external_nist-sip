@@ -479,6 +479,9 @@ private:
 
         bool start()
         {
+            char c;
+            while (recv(mGroup->mDeviceSocket, &c, 1, MSG_DONTWAIT) == 1);
+
             if (run("Device", ANDROID_PRIORITY_AUDIO) != NO_ERROR) {
                 LOGE("cannot start device thread");
                 return false;
@@ -663,7 +666,8 @@ bool AudioGroup::set(int sampleRate, int sampleCount)
     tv.tv_sec = 0;
     tv.tv_usec = 1000 * sampleCount / sampleRate * 500;
     if (setsockopt(pair[0], SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) ||
-        setsockopt(pair[0], SOL_SOCKET, SO_RCVBUF, &output, sizeof(output))) {
+        setsockopt(pair[0], SOL_SOCKET, SO_RCVBUF, &output, sizeof(output)) ||
+        setsockopt(pair[1], SOL_SOCKET, SO_SNDBUF, &output, sizeof(output))) {
         LOGE("setsockopt: %s", strerror(errno));
         return false;
     }
