@@ -49,7 +49,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onCalling(session);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onCalling(): " + t);
+                    Log.w(TAG, "onCalling()", t);
                 }
             }
         });
@@ -63,7 +63,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onRinging(session, caller, sessionDescription);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onRinging(): " + t);
+                    Log.w(TAG, "onRinging()", t);
                 }
             }
         });
@@ -76,7 +76,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onRingingBack(session);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onRingingBack(): " + t);
+                    Log.w(TAG, "onRingingBack()", t);
                 }
             }
         });
@@ -90,7 +90,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onCallEstablished(session, sessionDescription);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onCallEstablished(): " + t);
+                    Log.w(TAG, "onCallEstablished()", t);
                 }
             }
         });
@@ -103,7 +103,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onCallEnded(session);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onCallEnded(): " + t);
+                    Log.w(TAG, "onCallEnded()", t);
                 }
             }
         });
@@ -116,7 +116,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onCallBusy(session);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onCallBusy(): " + t);
+                    Log.w(TAG, "onCallBusy()", t);
                 }
             }
         });
@@ -130,7 +130,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onCallChangeFailed(session, className, message);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onCallChangeFailed(): " + t);
+                    Log.w(TAG, "onCallChangeFailed()", t);
                 }
             }
         });
@@ -144,7 +144,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onError(session, className, message);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onError(): " + t);
+                    Log.w(TAG, "onError()", t);
                 }
             }
         });
@@ -157,7 +157,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onRegistering(session);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onRegistering(): " + t);
+                    Log.w(TAG, "onRegistering()", t);
                 }
             }
         });
@@ -185,7 +185,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onRegistrationFailed(session, className, message);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationFailed(): " + t);
+                    Log.w(TAG, "onRegistrationFailed()", t);
                 }
             }
         });
@@ -198,7 +198,7 @@ class SipSessionListenerProxy extends ISipSessionListener.Stub {
                 try {
                     mListener.onRegistrationTimeout(session);
                 } catch (Throwable t) {
-                    Log.w(TAG, "onRegistrationTimeout(): " + t);
+                    Log.w(TAG, "onRegistrationTimeout()", t);
                 }
             }
         });
