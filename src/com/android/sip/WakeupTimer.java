@@ -90,8 +90,9 @@ class WakeupTimer extends BroadcastReceiver {
         for (MyEvent e : mEventQueue) {
             int remainingTime = (int) (e.mTriggerTime - now);
             remainingTime = remainingTime / minPeriod * minPeriod;
-            e.mTriggerTime = now + remainingTime;
-
+            if (remainingTime != 0) {
+                e.mTriggerTime = now + remainingTime;
+            }
             e.mPeriod = e.mMaxPeriod / minPeriod * minPeriod;
         }
         TreeSet<MyEvent> newQueue = new TreeSet<MyEvent>(

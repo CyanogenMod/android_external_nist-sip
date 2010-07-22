@@ -479,22 +479,46 @@ class SipServiceImpl extends ISipService.Stub {
 
     private class KeepAliveProcess implements Runnable {
         private SipSessionGroup.SipSessionImpl mSession;
-        private static final int DURATION = 15;
+        private static final int INCREMENT = 15;
+        private static final int MAX_RETRY = 4;
+        private int interval = INCREMENT;
+        private boolean maxIntervalMeasured = false;
 
         public KeepAliveProcess(SipSessionGroup.SipSessionImpl session) {
             mSession = session;
         }
 
         public void start() {
-            mTimer.set(DURATION * 1000, this);
+            mTimer.set(interval * 1000, this);
         }
 
         public void run() {
+            int retry = 0;
             Log.d(TAG, "  ~~~ keepalive");
-            try {
+            mTimer.cancel(this);
+            for (retry = 0; retry < MAX_RETRY; ++retry) {
                 mSession.sendKeepAlive();
-            } catch (SipException e) {
-                Log.e(TAG, "Cannot send keepalive", e);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "keepalive interrupted", e);
+                    return;
+                }
+                if (SipSessionState.READY_TO_CALL.equals(mSession.getState())) {
+                    break;
+                }
+            }
+            if (retry == MAX_RETRY) {
+                Log.w(TAG, "Server didn't respond SIP OPTIONS req:" + mSession);
+                return;
+            }
+            if (mSession.isReRegisterRequired()) {
+                mSession.register(EXPIRY_TIME);
+                interval -= INCREMENT;
+                maxIntervalMeasured = true;
+            } else {
+                if (!maxIntervalMeasured) interval += INCREMENT;
+                mTimer.set(interval * 1000, this);
             }
         }
 
@@ -616,6 +640,7 @@ class SipServiceImpl extends ISipService.Stub {
             FLog.d(TAG, "onRegistering(): " + session + ": " + mSession);
             synchronized (SipServiceImpl.this) {
                 if (!isStopped() && (session != mSession)) return;
+                mRegistered = false;
                 try {
                     mProxy.onRegistering(session);
                 } catch (Throwable t) {

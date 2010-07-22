@@ -138,8 +138,10 @@ class SipHelper {
             throws ParseException, SipException {
         List<ViaHeader> viaHeaders = new ArrayList<ViaHeader>(1);
         ListeningPoint lp = getListeningPoint();
-        viaHeaders.add(mHeaderFactory.createViaHeader(lp.getIPAddress(),
-                lp.getPort(), lp.getTransport(), null));
+        ViaHeader viaHeader = mHeaderFactory.createViaHeader(lp.getIPAddress(),
+                lp.getPort(), lp.getTransport(), null);
+        viaHeader.setRPort();
+        viaHeaders.add(viaHeader);
         return viaHeaders;
     }
 
@@ -173,12 +175,15 @@ class SipHelper {
         return uri;
     }
 
-    public void sendKeepAlive(SipProfile profile)
+    public ClientTransaction sendKeepAlive(SipProfile userProfile, String tag)
             throws SipException {
         try {
-            String proxy = profile.getProxyAddress();
-            if (proxy == null) proxy = profile.getSipDomain();
-            getListeningPoint().sendHeartbeat(proxy, profile.getPort());
+            Request request = createRequest(Request.OPTIONS, userProfile, tag);
+
+            ClientTransaction clientTransaction =
+                    mSipProvider.getNewClientTransaction(request);
+            clientTransaction.sendRequest();
+            return clientTransaction;
         } catch (Exception e) {
             throw new SipException("sendKeepAlive()", e);
         }
@@ -187,19 +192,7 @@ class SipHelper {
     public ClientTransaction sendRegister(SipProfile userProfile, String tag,
             int expiry) throws SipException {
         try {
-            FromHeader fromHeader = createFromHeader(userProfile, tag);
-            ToHeader toHeader = createToHeader(userProfile);
-            SipURI requestURI = mAddressFactory.createSipURI("sip:"
-                    + userProfile.getSipDomain());
-            List<ViaHeader> viaHeaders = createViaHeaders();
-            CallIdHeader callIdHeader = createCallIdHeader();
-            CSeqHeader cSeqHeader = createCSeqHeader(Request.REGISTER);
-            MaxForwardsHeader maxForwards = createMaxForwardsHeader();
-
-            Request request = mMessageFactory.createRequest(requestURI,
-                    Request.REGISTER, callIdHeader, cSeqHeader, fromHeader,
-                    toHeader, viaHeaders, maxForwards);
-
+            Request request = createRequest(Request.REGISTER, userProfile, tag);
             if (expiry == 0) {
                 // remove all previous registrations by wildcard
                 // rfc3261#section-10.2.2
@@ -208,9 +201,6 @@ class SipHelper {
                 request.addHeader(createContactHeader(userProfile));
             }
             request.addHeader(mHeaderFactory.createExpiresHeader(expiry));
-            Header userAgentHeader = mHeaderFactory.createHeader("User-Agent",
-                    "SIPAUA/0.1.001");
-            request.addHeader(userAgentHeader);
 
             ClientTransaction clientTransaction =
                     mSipProvider.getNewClientTransaction(request);
@@ -219,6 +209,25 @@ class SipHelper {
         } catch (ParseException e) {
             throw new SipException("sendRegister()", e);
         }
+    }
+
+    private Request createRequest(String requestType, SipProfile userProfile,
+            String tag) throws ParseException, SipException {
+        FromHeader fromHeader = createFromHeader(userProfile, tag);
+        ToHeader toHeader = createToHeader(userProfile);
+        SipURI requestURI = mAddressFactory.createSipURI("sip:"
+                + userProfile.getSipDomain());
+        List<ViaHeader> viaHeaders = createViaHeaders();
+        CallIdHeader callIdHeader = createCallIdHeader();
+        CSeqHeader cSeqHeader = createCSeqHeader(requestType);
+        MaxForwardsHeader maxForwards = createMaxForwardsHeader();
+        Request request = mMessageFactory.createRequest(requestURI,
+                requestType, callIdHeader, cSeqHeader, fromHeader,
+                toHeader, viaHeaders, maxForwards);
+        Header userAgentHeader = mHeaderFactory.createHeader("User-Agent",
+                "SIPAUA/0.1.001");
+        request.addHeader(userAgentHeader);
+        return request;
     }
 
     public ClientTransaction handleChallenge(ResponseEvent responseEvent,

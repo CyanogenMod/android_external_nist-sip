@@ -63,6 +63,7 @@ import javax.sip.address.SipURI;
 import javax.sip.header.CSeqHeader;
 import javax.sip.header.ExpiresHeader;
 import javax.sip.header.FromHeader;
+import javax.sip.header.ViaHeader;
 import javax.sip.message.Message;
 import javax.sip.message.Request;
 import javax.sip.message.Response;
@@ -87,6 +88,7 @@ class SipSessionGroup implements SipListener {
     private SipStack mSipStack;
     private SipHelper mSipHelper;
     private String mLastNonce;
+    private int mRPort;
 
     // session that processes INVITE requests
     private SipSessionImpl mCallReceiverSession;
@@ -320,6 +322,7 @@ class SipSessionGroup implements SipListener {
         ClientTransaction mClientTransaction;
         byte[] mPeerSessionDescription;
         boolean mInCall;
+        boolean mReRegisterFlag = false;
 
         public SipSessionImpl(ISipSessionListener listener) {
             setListener(listener);
@@ -422,9 +425,15 @@ class SipSessionGroup implements SipListener {
             }
         }
 
-        public void sendKeepAlive() throws SipException {
-            synchronized (SipSessionGroup.this) {
-                mSipHelper.sendKeepAlive(mLocalProfile);
+        public boolean isReRegisterRequired() {
+            return mReRegisterFlag;
+        }
+
+        public void sendKeepAlive() {
+            try {
+                process(new OptionsCommand());
+            } catch (SipException e) {
+                Log.e(TAG, "sendKeepAlive failed", e);
             }
         }
 
@@ -462,6 +471,9 @@ class SipSessionGroup implements SipListener {
                 case REGISTERING:
                 case DEREGISTERING:
                     processed = registeringToReady(evt);
+                    break;
+                case PINGING:
+                    processed = parseOptionsResult(evt);
                     break;
                 case READY_TO_CALL:
                     processed = readyForCall(evt);
@@ -565,6 +577,31 @@ class SipSessionGroup implements SipListener {
             return expires;
         }
 
+        private boolean parseOptionsResult(EventObject evt) {
+            if (expectResponse(Request.OPTIONS, evt)) {
+                ResponseEvent event = (ResponseEvent) evt;
+                int rPort = getRPortFromResponse(event.getResponse());
+                if (rPort != -1) {
+                    if (mRPort == 0) mRPort = rPort;
+                    if (mRPort != rPort) {
+                        mReRegisterFlag = true;
+                        Log.w(TAG, "The rport is changed, we need to re-register now!");
+                    }
+                } else {
+                    Log.w(TAG, "Remote side did not respect our rport request");
+                }
+                reset();
+                return true;
+            }
+            return false;
+        }
+
+        private int getRPortFromResponse(Response response) {
+            ViaHeader viaHeader = (ViaHeader)(response.getHeader(
+                    SIPHeaderNames.VIA));
+            return (viaHeader == null) ? -1 : viaHeader.getRPort();
+        }
+
         private boolean registeringToReady(EventObject evt)
                 throws SipException {
             if (expectResponse(Request.REGISTER, evt)) {
@@ -662,6 +699,13 @@ class SipSessionGroup implements SipListener {
                 addSipSession(this);
                 mState = SipSessionState.DEREGISTERING;
                 mProxy.onRegistering(this);
+                return true;
+            } else if (evt instanceof OptionsCommand) {
+                mClientTransaction = mSipHelper.sendKeepAlive(mLocalProfile,
+                        generateTag());
+                mDialog = mClientTransaction.getDialog();
+                mState = SipSessionState.PINGING;
+                addSipSession(this);
                 return true;
             }
             return false;
@@ -979,6 +1023,12 @@ class SipSessionGroup implements SipListener {
             return ((ResponseEvent) evt).getResponse().toString();
         } else {
             return evt.toString();
+        }
+    }
+
+    private class OptionsCommand extends EventObject {
+        public OptionsCommand() {
+            super(SipSessionGroup.this);
         }
     }
 

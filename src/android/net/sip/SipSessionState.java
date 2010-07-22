@@ -49,7 +49,10 @@ public enum SipSessionState {
     IN_CALL,
 
     /** Some error occurs when making a remote call to {@link ISipSession}. */
-    REMOTE_ERROR;
+    REMOTE_ERROR,
+
+    /** When an OPTIONS request is sent. */
+    PINGING;
 
     /**
      * Checks if the specified string represents the same state as this object.

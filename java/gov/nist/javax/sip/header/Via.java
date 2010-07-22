@@ -96,6 +96,8 @@ public class Via
      */
     protected String comment;
 
+    private boolean rPortFlag = false;
+
     /** Default constructor
     */
     public Via() {
@@ -265,6 +267,7 @@ public class Via
         if (comment != null) {
             buffer.append(SP).append(LPAREN).append(comment).append(RPAREN);
         }
+        if (rPortFlag) buffer.append(";rport");
         return buffer;
     }
 
@@ -324,11 +327,7 @@ public class Via
      * Set the RPort flag parameter
      */
     public void setRPort(){
-        try {
-            this.setParameter(Via.RPORT,"");
-        } catch (ParseException e) {
-            e.printStackTrace();    // should not occur
-        }
+        rPortFlag = true;
     }
 
     /**
