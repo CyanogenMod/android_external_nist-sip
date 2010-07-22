@@ -411,7 +411,7 @@ class SipServiceImpl extends ISipService.Stub {
                 // network disconnected
                 FLog.w(TAG, "resetGroup(): network disconnected?");
                 if (localIp != null) {
-                    resetGroup(localIp);
+                    resetGroup(null); // reset w/o local IP
                 } else {
                     // recursive
                     Log.wtf(TAG, "impossible!");

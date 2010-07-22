@@ -92,7 +92,7 @@ abstract class SipCallBase extends Call {
         return connections.size() == MAX_CONNECTIONS_PER_CALL;
     }
 
-    protected void clearDisconnected() {
+    void clearDisconnected() {
         for (Iterator<Connection> it = connections.iterator(); it.hasNext(); ) {
             Connection c = it.next();
             if (c.getState() == State.DISCONNECTED) it.remove();

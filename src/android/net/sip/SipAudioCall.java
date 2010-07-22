@@ -16,6 +16,8 @@
 
 package android.net.sip;
 
+import android.net.rtp.AudioGroup;
+import android.net.rtp.AudioStream;
 import android.os.Message;
 
 import javax.sip.SipException;
@@ -174,13 +176,19 @@ public interface SipAudioCall {
     /** Ends a call. */
     void endCall() throws SipException;
 
-    /** Puts a call on hold. */
+    /**
+     * Puts a call on hold.  When succeeds,
+     * {@link #Listener#onCallHeld(SipAudioCall)} is called.
+     */
     void holdCall() throws SipException;
 
     /** Answers a call. */
     void answerCall() throws SipException;
 
-    /** Continues a call that's on hold. */
+    /**
+     * Continues a call that's on hold. When succeeds,
+     * {@link #Listener#onCallEstablished(SipAudioCall)} is called.
+     */
     void continueCall() throws SipException;
 
     /** Puts the device to in-call mode. */
@@ -220,6 +228,32 @@ public interface SipAudioCall {
      * @param result the result message to send when done
      */
     void sendDtmf(int code, Message result);
+
+    /**
+     * Gets the {@link AudioStream} object used in this call. The object
+     * represents the RTP stream that carries the audio data to and from the
+     * peer. The object may not be created before the call is established. And
+     * it is undefined after the call ends or the {@link #close} method is
+     * called.
+     *
+     * @return the {@link AudioStream} object or null if the RTP stream has not
+     *      yet been set up
+     */
+    AudioStream getAudioStream();
+
+    /**
+     * Gets the {@link AudioGroup} object which the {@link AudioStream} object
+     * joins. The group object may not exist before the call is established.
+     * Also, the {@code AudioStream} may change its group during a call (e.g.,
+     * after the call is held/un-held). Finally, the {@code AudioGroup} object
+     * returned by this method is undefined after the call ends or the
+     * {@link #close} method is called.
+     *
+     * @return the {@link AudioGroup} object or null if the RTP stream has not
+     *      yet been set up
+     * @see #getAudioStream
+     */
+    AudioGroup getAudioGroup();
 
     /**
      * Checks if the call is established.

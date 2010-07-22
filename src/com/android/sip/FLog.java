@@ -58,6 +58,7 @@ class FLog {
     }
 
     static synchronized void write(String type, String tag, String msg) {
+        if (writer == null) return;
         try {
             writer.println(String.format("%s %s %s| %s| %s", type,
                     getDate(), getTime(), tag, msg));
@@ -69,6 +70,7 @@ class FLog {
 
     static synchronized void write(String type, String tag, String msg,
             Throwable t) {
+        if (writer == null) return;
         try {
             writer.println(String.format("%s %s| %s| %s", type,
                     getDate(), getTime(), tag, msg));
