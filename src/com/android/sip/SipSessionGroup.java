@@ -448,8 +448,8 @@ class SipSessionGroup implements SipListener {
         }
 
         protected String generateTag() {
-            // TODO: based on myself's profile
-            return String.valueOf((long) (Math.random() * 1000000L));
+            // 32-bit randomness
+            return String.valueOf((long) (Math.random() * 0x100000000L));
         }
 
         public String toString() {
@@ -755,9 +755,8 @@ class SipSessionGroup implements SipListener {
                 establishCall();
                 return true;
             } else if (isRequestEvent(Request.CANCEL, evt)) {
-                RequestEvent event = (RequestEvent) evt;
-                // TODO: what to do here? what happens when racing between
-                // OK-to-invite from callee and Cancel from caller
+                // http://tools.ietf.org/html/rfc3261#section-9.2
+                // Final response has been sent; do nothing here.
                 return true;
             }
             return false;
