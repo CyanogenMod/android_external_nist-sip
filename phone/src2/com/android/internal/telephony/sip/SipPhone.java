@@ -183,8 +183,6 @@ public class SipPhone extends SipPhoneBase {
         }
         if (foregroundCall.getState() == SipCall.State.ACTIVE) {
             switchHoldingAndActive();
-            // TODO:
-            //fakeHoldForegroundBeforeDial();
         }
         if (foregroundCall.getState() != SipCall.State.IDLE) {
             //we should have failed in !canDial() above before we get here
@@ -212,9 +210,7 @@ public class SipPhone extends SipPhoneBase {
     }
 
     public boolean canConference() {
-        //TODO
-        //return mCT.canConference();
-        return false;
+        return true;
     }
 
     public void conference() throws CallStateException {
@@ -222,8 +218,6 @@ public class SipPhone extends SipPhoneBase {
     }
 
     public boolean canTransfer() {
-        // TODO
-        //return mCT.canTransfer();
         return false;
     }
 
@@ -362,8 +356,6 @@ public class SipPhone extends SipPhoneBase {
             }
         }
 
-        // TODO: if this is the foreground call and a background call exists,
-        // resume the background call
         @Override
         public void hangup() throws CallStateException {
             Log.v(LOG_TAG, "hang up call: " + getState() + ": " + this

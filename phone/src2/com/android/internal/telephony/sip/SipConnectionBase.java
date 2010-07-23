@@ -43,7 +43,6 @@ abstract class SipConnectionBase extends Connection {
 
     private SipAudioCall mSipAudioCall;
 
-    // TODO
     private String mAddress = null;     // MAY BE NULL!!!
     private String dialString;          // outgoing calls only
     private String postDialString;      // outgoing calls only
