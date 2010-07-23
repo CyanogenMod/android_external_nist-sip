@@ -379,7 +379,8 @@ class SipSessionGroup implements SipListener {
         public void makeCall(SipProfile peerProfile,
                 SessionDescription sessionDescription) {
             try {
-                process(new MakeCallCommand(peerProfile, sessionDescription));
+                processCommand(
+                        new MakeCallCommand(peerProfile, sessionDescription));
             } catch (SipException e) {
                 onError(e);
             }
@@ -387,7 +388,8 @@ class SipSessionGroup implements SipListener {
 
         public void answerCall(SessionDescription sessionDescription) {
             try {
-                process(new MakeCallCommand(mPeerProfile, sessionDescription));
+                processCommand(
+                        new MakeCallCommand(mPeerProfile, sessionDescription));
             } catch (SipException e) {
                 onError(e);
             }
@@ -395,7 +397,7 @@ class SipSessionGroup implements SipListener {
 
         public void endCall() {
             try {
-                process(END_CALL);
+                processCommand(END_CALL);
             } catch (SipException e) {
                 onError(e);
             }
@@ -403,7 +405,8 @@ class SipSessionGroup implements SipListener {
 
         public void changeCall(SessionDescription sessionDescription) {
             try {
-                process(new MakeCallCommand(mPeerProfile, sessionDescription));
+                processCommand(
+                        new MakeCallCommand(mPeerProfile, sessionDescription));
             } catch (SipException e) {
                 onError(e);
             }
@@ -411,7 +414,7 @@ class SipSessionGroup implements SipListener {
 
         public void register(int duration) {
             try {
-                process(new RegisterCommand(duration));
+                processCommand(new RegisterCommand(duration));
             } catch (SipException e) {
                 onRegistrationFailed(e);
             }
@@ -419,7 +422,7 @@ class SipSessionGroup implements SipListener {
 
         public void unregister() {
             try {
-                process(DEREGISTER);
+                processCommand(DEREGISTER);
             } catch (SipException e) {
                 onRegistrationFailed(e);
             }
@@ -431,9 +434,15 @@ class SipSessionGroup implements SipListener {
 
         public void sendKeepAlive() {
             try {
-                process(new OptionsCommand());
+                processCommand(new OptionsCommand());
             } catch (SipException e) {
                 Log.e(TAG, "sendKeepAlive failed", e);
+            }
+        }
+
+        private void processCommand(EventObject command) throws SipException {
+            if (!process(command)) {
+                throw new SipException("wrong state to execute: " + command);
             }
         }
 
@@ -503,6 +512,7 @@ class SipSessionGroup implements SipListener {
 
         private boolean processExceptions(EventObject evt) throws SipException {
             if (isRequestEvent(Request.BYE, evt)) {
+                // terminate the call whenever a BYE is received
                 mSipHelper.sendResponse((RequestEvent) evt, Response.OK);
                 endCallNormally();
                 return true;
@@ -526,7 +536,7 @@ class SipSessionGroup implements SipListener {
 
         private void processDialogTerminated(DialogTerminatedEvent event) {
             if (mDialog == event.getDialog()) {
-                endCallNormally();
+                onError(new SipException("dialog terminated"));
             } else {
                 Log.d(TAG, "not the current dialog; current=" + mDialog
                         + ", terminated=" + event.getDialog());
@@ -555,11 +565,7 @@ class SipSessionGroup implements SipListener {
                 break;
             case INCOMING_CALL:
             case INCOMING_CALL_ANSWERING:
-            case OUTGOING_CALL:
-            case OUTGOING_CALL_RING_BACK:
             case OUTGOING_CALL_CANCELING:
-                // rfc3261#section-14.1
-                // if re-invite gets timed out, terminate the dialog
                 endCallOnError(new SipException("timed out"));
                 break;
             default:
@@ -780,15 +786,15 @@ class SipSessionGroup implements SipListener {
                     reset();
                     mProxy.onCallBusy(this);
                     return true;
+                case Response.REQUEST_PENDING:
+                    // TODO:
+                    // rfc3261#section-14.1; re-schedule invite
+                    return true;
                 default:
                     if (statusCode >= 400) {
                         // error: an ack is sent automatically by the stack
-                        if (mInCall) {
-                            return handleInCallError(response);
-                        } else {
-                            endCallOnError(createCallbackException(response));
-                            return true;
-                        }
+                        onError(createCallbackException(response));
+                        return true;
                     } else if (statusCode >= 300) {
                         // TODO: handle 3xx (redirect)
                     } else {
@@ -807,34 +813,6 @@ class SipSessionGroup implements SipListener {
             return false;
         }
 
-        private boolean handleInCallError(Response response) {
-            int statusCode = response.getStatusCode();
-            switch (statusCode) {
-            case Response.CALL_OR_TRANSACTION_DOES_NOT_EXIST:
-            case Response.REQUEST_TIMEOUT:
-                // rfc3261#section-14.1: re-invite failed; terminate
-                // the dialog
-                endCallOnError(createCallbackException(response));
-                return true;
-            case Response.REQUEST_PENDING:
-                // TODO:
-                // rfc3261#section-14.1; re-schedule invite
-                return true;
-            default:
-                if (statusCode >= 400) {
-                    // error: an ack is sent automatically by the stack
-                    mState = SipSessionState.IN_CALL;
-                    onError(createCallbackException(response));
-                    return true;
-                } else if (statusCode >= 300) {
-                    // TODO: handle 3xx (redirect)
-                } else {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         private boolean outgoingCallToReady(EventObject evt)
                 throws SipException {
             if (evt instanceof ResponseEvent) {
@@ -847,14 +825,7 @@ class SipSessionGroup implements SipListener {
                         return true;
                     }
                 } else if (expectResponse(Request.INVITE, evt)) {
-                    if (statusCode == Response.REQUEST_TERMINATED) {
-                        if (mInCall) {
-                            fallbackToPreviousInCall(response);
-                        } else {
-                            endCallNormally();
-                        }
-                        return true;
-                    } else if (statusCode == Response.OK) {
+                    if (statusCode == Response.OK) {
                         outgoingCall(evt); // abort Cancel
                         return true;
                     }
@@ -863,13 +834,15 @@ class SipSessionGroup implements SipListener {
                 }
 
                 if (statusCode >= 400) {
-                    if (mInCall) {
-                        fallbackToPreviousInCall(response);
-                    } else {
-                        endCallOnError(createCallbackException(response));
-                    }
+                    onError(createCallbackException(response));
                     return true;
                 }
+            } else if (evt instanceof TransactionTerminatedEvent) {
+                // rfc3261#section-14.1:
+                // if re-invite gets timed out, terminate the dialog; but
+                // re-invite is not reliable, just let it go and pretend
+                // nothing happened.
+                onError(new SipException("timed out"));
             }
             return false;
         }
@@ -915,8 +888,7 @@ class SipSessionGroup implements SipListener {
             mProxy.onCallEstablished(this, mPeerSessionDescription);
         }
 
-        private void fallbackToPreviousInCall(Response response) {
-            Throwable exception = createCallbackException(response);
+        private void fallbackToPreviousInCall(Throwable exception) {
             mState = SipSessionState.IN_CALL;
             mProxy.onCallChangeFailed(this, exception.getClass().getName(),
                     exception.getMessage());
@@ -927,14 +899,18 @@ class SipSessionGroup implements SipListener {
             mProxy.onCallEnded(this);
         }
 
-        private void endCallOnError(Throwable throwable) {
+        private void endCallOnError(Throwable exception) {
             reset();
-            onError(throwable);
+            mProxy.onError(this, exception.getClass().getName(),
+                    exception.getMessage());
         }
 
         private void onError(Throwable exception) {
-            mProxy.onError(this, exception.getClass().getName(),
-                    exception.getMessage());
+            if (mInCall) {
+                fallbackToPreviousInCall(exception);
+            } else {
+                endCallOnError(exception);
+            }
         }
 
         private void onRegistrationDone(int duration) {
