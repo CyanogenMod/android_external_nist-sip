@@ -123,13 +123,20 @@ public class SipCallUi extends Activity implements OnClickListener,
     protected void onResume() {
         super.onResume();
         enableProximitySensor();
+        if (mAudioCall != null) continueCall();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        disableProximitySensor();
+        if (mAudioCall != null) holdCall();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         closeAudioCall();
-        disableProximitySensor();
     }
 
     private void receiveCall(Intent intent) {
@@ -158,10 +165,10 @@ public class SipCallUi extends Activity implements OnClickListener,
     }
 
     private void createSipAudioCall(Intent intent) {
-        // TODO: what happens if another call is going
         try {
             Log.v(TAG, "create SipAudioCall");
-            mAudioCall = mSipManager.takeAudioCall(this, intent, this);
+            mAudioCall = mSipManager.takeAudioCall(this, intent, null);
+            mAudioCall.setListener(this, true);
             if (mAudioCall == null) {
                 throw new SipException("no session to handle audio call");
             }
@@ -216,7 +223,7 @@ public class SipCallUi extends Activity implements OnClickListener,
 
     public synchronized void onRinging(SipAudioCall call, SipProfile caller) {
         Log.v(TAG, "onRinging(): " + call + " <--> " + mAudioCall);
-        if (mAudioCall != null) return;
+        if (mAudioCall != call) return;
         mCaller = caller.getUserName() + '@' + caller.getSipDomain();
         showCallNotificationDialog(caller);
         setCallStatus();
