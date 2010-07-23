@@ -279,14 +279,25 @@ public class SipAudioCallImpl extends SipSessionAdapter
     @Override
     public void onCallChangeFailed(ISipSession session,
             String className, String message) {
-        // TODO:
+        Log.d(TAG, "sip call change failed: " + message);
+        Listener listener = mListener;
+        if (listener != null) {
+            try {
+                listener.onError(SipAudioCallImpl.this,
+                        className + ": " + message);
+            } catch (Throwable t) {
+                Log.e(TAG, "onCallBusy()", t);
+            }
+        }
     }
 
     @Override
     public void onError(ISipSession session, String className,
             String message) {
         Log.d(TAG, "sip session error: " + className + ": " + message);
-        close(true);
+        synchronized (this) {
+            if (!isInCall()) close(true);
+        }
         Listener listener = mListener;
         if (listener != null) {
             try {
@@ -684,6 +695,4 @@ public class SipAudioCallImpl extends SipSessionAdapter
             return null;
         }
     }
-
-    // TODO: fix listener callback deadlock
 }
