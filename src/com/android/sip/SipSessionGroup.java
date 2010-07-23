@@ -63,6 +63,7 @@ import javax.sip.address.SipURI;
 import javax.sip.header.CSeqHeader;
 import javax.sip.header.ExpiresHeader;
 import javax.sip.header.FromHeader;
+import javax.sip.header.MinExpiresHeader;
 import javax.sip.header.ViaHeader;
 import javax.sip.message.Message;
 import javax.sip.message.Request;
@@ -579,7 +580,11 @@ class SipSessionGroup implements SipListener {
             ExpiresHeader expiresHeader = (ExpiresHeader)
                     response.getHeader(ExpiresHeader.NAME);
             if (expiresHeader != null) expires = expiresHeader.getExpires();
-            // TODO: check MIN_EXPIRES header
+            expiresHeader = (ExpiresHeader)
+                    response.getHeader(MinExpiresHeader.NAME);
+            if (expiresHeader != null) {
+                expires = Math.max(expires, expiresHeader.getExpires());
+            }
             return expires;
         }
 
