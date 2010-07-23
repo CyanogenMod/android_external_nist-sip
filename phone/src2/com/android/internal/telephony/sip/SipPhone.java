@@ -208,7 +208,6 @@ public class SipPhone extends SipPhoneBase {
             foregroundCall.switchWith(backgroundCall);
             if (backgroundCall.getState().isAlive()) backgroundCall.hold();
             if (foregroundCall.getState().isAlive()) foregroundCall.unhold();
-            // state changes will be notified in callback
         }
     }
 
@@ -547,6 +546,19 @@ public class SipPhone extends SipPhoneBase {
                             + " on phone " + getPhone());
                 }
             }
+
+            @Override
+            protected void onError(String errorMessage) {
+                Log.w(LOG_TAG, "SIP error: " + errorMessage);
+                if (mSipAudioCall.isInCall()) {
+                    // Don't end the call when in call.
+                    // TODO: how to deliver the error to PhoneApp
+                    return;
+                }
+
+                // FIXME: specify error
+                onCallEnded(DisconnectCause.ERROR_UNSPECIFIED);
+            }
         };
 
         public SipConnection(SipCall owner, SipProfile callee) {
@@ -693,9 +705,8 @@ public class SipPhone extends SipPhoneBase {
     }
 
     private abstract class SipAudioCallAdapter extends SipAudioCall.Adapter {
-        private SipException mError;
-
         protected abstract void onCallEnded(Connection.DisconnectCause cause);
+        protected abstract void onError(String errorMessage);
 
         @Override
         public void onCallEnded(SipAudioCall call) {
@@ -709,13 +720,7 @@ public class SipPhone extends SipPhoneBase {
 
         @Override
         public void onError(SipAudioCall call, String errorMessage) {
-            mError = new SipException(errorMessage);
-            // FIXME: specify error
-            onCallEnded(Connection.DisconnectCause.ERROR_UNSPECIFIED);
-        }
-
-        public SipException getError() {
-            return mError;
+            onError(errorMessage);
         }
     }
 }
