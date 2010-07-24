@@ -83,16 +83,18 @@ class WakeupTimer extends BroadcastReceiver {
         mPendingIntent = null;
     }
 
-    private void recalculatePeriods(long now) {
+    private void recalculatePeriods() {
         if (mEventQueue.isEmpty()) return;
 
-        int minPeriod = mEventQueue.first().mMaxPeriod;
+        MyEvent firstEvent = mEventQueue.first();
+        int minPeriod = firstEvent.mMaxPeriod;
+        long minTriggerTime = firstEvent.mTriggerTime;
         for (MyEvent e : mEventQueue) {
-            int remainingTime = (int) (e.mTriggerTime - now);
-            remainingTime = remainingTime / minPeriod * minPeriod;
-            e.mTriggerTime = now + remainingTime;
-
             e.mPeriod = e.mMaxPeriod / minPeriod * minPeriod;
+            int interval = (int) (e.mLastTriggerTime + e.mMaxPeriod
+                    - minTriggerTime);
+            interval = interval / minPeriod * minPeriod;
+            e.mTriggerTime = minTriggerTime + interval;
         }
         TreeSet<MyEvent> newQueue = new TreeSet<MyEvent>(
                 mEventQueue.comparator());
@@ -115,20 +117,22 @@ class WakeupTimer extends BroadcastReceiver {
         MyEvent firstEvent = mEventQueue.first();
         int minPeriod = firstEvent.mPeriod;
         if (minPeriod <= event.mMaxPeriod) {
-            int period = event.mPeriod
-                    = event.mMaxPeriod / minPeriod * minPeriod;
-            period -= (int) (firstEvent.mTriggerTime - now);
-            period = period / minPeriod * minPeriod;
-            event.mTriggerTime = firstEvent.mTriggerTime + period;
+            event.mPeriod = event.mMaxPeriod / minPeriod * minPeriod;
+            int interval = event.mMaxPeriod;
+            interval -= (int) (firstEvent.mTriggerTime - now);
+            interval = interval / minPeriod * minPeriod;
+            event.mTriggerTime = firstEvent.mTriggerTime + interval;
             mEventQueue.add(event);
         } else {
             long triggerTime = now + event.mPeriod;
             if (firstEvent.mTriggerTime < triggerTime) {
-                triggerTime = firstEvent.mTriggerTime;
+                event.mTriggerTime = firstEvent.mTriggerTime;
+                event.mLastTriggerTime -= event.mPeriod;
+            } else {
+                event.mTriggerTime = triggerTime;
             }
-            event.mTriggerTime = triggerTime;
             mEventQueue.add(event);
-            recalculatePeriods(triggerTime);
+            recalculatePeriods();
         }
     }
 
@@ -143,7 +147,7 @@ class WakeupTimer extends BroadcastReceiver {
         if (stopped()) return;
 
         long now = SystemClock.elapsedRealtime();
-        MyEvent event = new MyEvent(period, callback);
+        MyEvent event = new MyEvent(period, callback, now);
         insertEvent(event);
 
         if (mEventQueue.first() == event) {
@@ -180,7 +184,11 @@ class WakeupTimer extends BroadcastReceiver {
             cancelAlarm();
         } else if (mEventQueue.first() != firstEvent) {
             cancelAlarm();
-            recalculatePeriods(mEventQueue.first().mTriggerTime);
+            firstEvent = mEventQueue.first();
+            firstEvent.mPeriod = firstEvent.mMaxPeriod;
+            firstEvent.mTriggerTime = firstEvent.mLastTriggerTime
+                    + firstEvent.mPeriod;
+            recalculatePeriods();
             scheduleNext();
         }
         Log.d(TAG, "after cancel:");
@@ -221,7 +229,8 @@ class WakeupTimer extends BroadcastReceiver {
         int count = 0;
         for (MyEvent event : mEventQueue) {
             Log.d(TAG, "     " + event + ": scheduled at "
-                    + showTime(event.mTriggerTime));
+                    + showTime(event.mTriggerTime) + ": last at "
+                    + showTime(event.mLastTriggerTime));
             if (++count >= 5) break;
         }
         if (mEventQueue.size() > count) {
@@ -240,6 +249,7 @@ class WakeupTimer extends BroadcastReceiver {
             if (event.mTriggerTime != triggerTime) break;
             Log.d(TAG, "execute " + event);
 
+            event.mLastTriggerTime = event.mTriggerTime;
             event.mTriggerTime += event.mPeriod;
 
             // run the callback in a new thread to prevent deadlock
@@ -258,11 +268,13 @@ class WakeupTimer extends BroadcastReceiver {
         int mPeriod;
         int mMaxPeriod;
         long mTriggerTime;
+        long mLastTriggerTime;
         Runnable mCallback;
 
-        MyEvent(int period, Runnable callback) {
+        MyEvent(int period, Runnable callback, long now) {
             mPeriod = mMaxPeriod = period;
             mCallback = callback;
+            mLastTriggerTime = now;
         }
 
         @Override
