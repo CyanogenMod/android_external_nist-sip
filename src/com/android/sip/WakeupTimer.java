@@ -35,7 +35,7 @@ import java.util.TreeSet;
  * Only used internally in this package.
  */
 class WakeupTimer extends BroadcastReceiver {
-    private static final String TAG = "__SIP.WakeupTimer__";
+    private static final String TAG = "_SIP.WkTimer_";
     private static final String TRIGGER_TIME = "TriggerTime";
 
     private Context mContext;
@@ -90,9 +90,8 @@ class WakeupTimer extends BroadcastReceiver {
         for (MyEvent e : mEventQueue) {
             int remainingTime = (int) (e.mTriggerTime - now);
             remainingTime = remainingTime / minPeriod * minPeriod;
-            if (remainingTime != 0) {
-                e.mTriggerTime = now + remainingTime;
-            }
+            e.mTriggerTime = now + remainingTime;
+
             e.mPeriod = e.mMaxPeriod / minPeriod * minPeriod;
         }
         TreeSet<MyEvent> newQueue = new TreeSet<MyEvent>(
@@ -166,7 +165,7 @@ class WakeupTimer extends BroadcastReceiver {
      */
     public synchronized void cancel(Runnable callback) {
         if (stopped() || mEventQueue.isEmpty()) return;
-        Log.d(TAG, "cancel callback:" + callback);
+        Log.d(TAG, "cancel:" + callback);
 
         MyEvent firstEvent = mEventQueue.first();
         for (Iterator<MyEvent> iter = mEventQueue.iterator();
@@ -174,14 +173,17 @@ class WakeupTimer extends BroadcastReceiver {
             MyEvent event = iter.next();
             if (event.mCallback == callback) {
                 iter.remove();
-                Log.d(TAG, "cancel event:" + event);
+                Log.d(TAG, "    cancel found:" + event);
             }
         }
-        if (mEventQueue.isEmpty() || (mEventQueue.first() != firstEvent)) {
+        if (mEventQueue.isEmpty()) {
             cancelAlarm();
-            recalculatePeriods(firstEvent.mTriggerTime);
+        } else if (mEventQueue.first() != firstEvent) {
+            cancelAlarm();
+            recalculatePeriods(mEventQueue.first().mTriggerTime);
             scheduleNext();
         }
+        Log.d(TAG, "after cancel:");
         printQueue();
     }
 
@@ -224,6 +226,8 @@ class WakeupTimer extends BroadcastReceiver {
         }
         if (mEventQueue.size() > count) {
             Log.d(TAG, "     .....");
+        } else if (count == 0) {
+            Log.d(TAG, "     <empty>");
         }
     }
 
@@ -265,7 +269,15 @@ class WakeupTimer extends BroadcastReceiver {
         public String toString() {
             String s = super.toString();
             s = s.substring(s.indexOf("@"));
-            return s + ":" + (mPeriod / 1000) + ":" + (mMaxPeriod / 1000);
+            return s + ":" + (mPeriod / 1000) + ":" + (mMaxPeriod / 1000) + ":"
+                    + toString(mCallback);
+        }
+
+        private String toString(Object o) {
+            String s = o.toString();
+            int index = s.indexOf("$");
+            if (index > 0) s = s.substring(index + 1);
+            return s;
         }
     }
 
