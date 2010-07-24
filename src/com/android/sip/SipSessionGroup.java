@@ -433,6 +433,10 @@ class SipSessionGroup implements SipListener {
             return mReRegisterFlag;
         }
 
+        public void clearReRegisterRequired() {
+            mReRegisterFlag = false;
+        }
+
         public void sendKeepAlive() {
             try {
                 processCommand(new OptionsCommand());
@@ -596,10 +600,14 @@ class SipSessionGroup implements SipListener {
                     if (mRPort == 0) mRPort = rPort;
                     if (mRPort != rPort) {
                         mReRegisterFlag = true;
-                        Log.w(TAG, "The rport is changed, we need to re-register now!");
+                        Log.w(TAG, String.format("rport is changed: %d <> %d",
+                                mRPort, rPort));
+                        mRPort = rPort;
+                    } else {
+                        Log.w(TAG, "rport is the same: " + rPort);
                     }
                 } else {
-                    Log.w(TAG, "Remote side did not respect our rport request");
+                    Log.w(TAG, "peer did not respect our rport request");
                 }
                 reset();
                 return true;

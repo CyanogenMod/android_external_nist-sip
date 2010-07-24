@@ -478,9 +478,10 @@ class SipServiceImpl extends ISipService.Stub {
     }
 
     private class KeepAliveProcess implements Runnable {
-        private SipSessionGroup.SipSessionImpl mSession;
+        private static final String TAG = "\\KEEPALIVE/";
         private static final int INCREMENT = 15;
         private static final int MAX_RETRY = 4;
+        private SipSessionGroup.SipSessionImpl mSession;
         private int interval = INCREMENT;
         private boolean maxIntervalMeasured = false;
 
@@ -489,10 +490,18 @@ class SipServiceImpl extends ISipService.Stub {
         }
 
         public void start() {
+            FLog.d(TAG, "start keepalive at " + interval);
+            mTimer.cancel(this);
             mTimer.set(interval * 1000, this);
         }
 
         public void run() {
+            synchronized (SipServiceImpl.this) {
+                keepalive();
+            }
+        }
+
+        private void keepalive() {
             int retry = 0;
             Log.d(TAG, "  ~~~ keepalive");
             mTimer.cancel(this);
@@ -509,20 +518,23 @@ class SipServiceImpl extends ISipService.Stub {
                 }
             }
             if (retry == MAX_RETRY) {
-                Log.w(TAG, "Server didn't respond SIP OPTIONS req:" + mSession);
+                FLog.w(TAG, "Server didn't respond SIP OPTIONS req:" + mSession);
                 return;
             }
             if (mSession.isReRegisterRequired()) {
                 mSession.register(EXPIRY_TIME);
                 interval -= INCREMENT;
+                if (interval <= 0) interval = INCREMENT;
+                FLog.d(TAG, "--- interval decrease: " + interval);
                 maxIntervalMeasured = true;
             } else {
                 if (!maxIntervalMeasured) interval += INCREMENT;
+                FLog.d(TAG, "+++ interval increase: " + interval);
                 mTimer.set(interval * 1000, this);
             }
         }
 
-        public synchronized void stop() {
+        public void stop() {
             mTimer.cancel(this);
         }
     }
@@ -662,6 +674,7 @@ class SipServiceImpl extends ISipService.Stub {
                 if (isStopped()) return;
 
                 if (duration > 0) {
+                    mSession.clearReRegisterRequired();
                     mExpiryTime = SystemClock.elapsedRealtime()
                             + (duration * 1000);
 
