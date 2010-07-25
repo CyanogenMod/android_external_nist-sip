@@ -121,7 +121,7 @@ public class SipPhone extends SipPhoneBase {
             String localUri = sipAudioCall.getLocalProfile().getUriString();
             if (localUri.equals(mProfile.getUriString())) {
                 boolean makeCallWait = foregroundCall.getState().isAlive();
-                ringingCall.take(sipAudioCall, makeCallWait);
+                ringingCall.initIncomingCall(sipAudioCall, makeCallWait);
                 return true;
             }
             return false;
@@ -310,6 +310,21 @@ public class SipPhone extends SipPhoneBase {
         return super.getServiceState();
     }
 
+    private String getUriString(SipProfile p) {
+        // SipProfile.getUriString() may contain "SIP:" and port
+        return p.getUserName() + "@" + getSipDomain(p);
+    }
+
+    private String getSipDomain(SipProfile p) {
+        String domain = p.getSipDomain();
+        // TODO: move this to SipProfile
+        if (domain.endsWith(":5060")) {
+            return domain.substring(0, domain.length() - 5);
+        } else {
+            return domain;
+        }
+    }
+
     private class SipCall extends SipCallBase {
         void switchWith(SipCall that) {
             synchronized (SipPhone.class) {
@@ -341,11 +356,26 @@ public class SipPhone extends SipPhoneBase {
             }
         }
 
+        private CallerInfo getCallerInfo(String number) {
+            CallerInfo info = CallerInfo.getCallerInfo(mContext, number);
+            if ((info == null) || (info.name == null)) return null;
+            Log.v(LOG_TAG, "++******++ got info from contact:");
+            Log.v(LOG_TAG, "     name: " + info.name);
+            Log.v(LOG_TAG, "     numb: " + info.phoneNumber);
+            Log.v(LOG_TAG, "     pres: " + info.numberPresentation);
+            return info;
+        }
+
         Connection dial(String calleeSipUri) throws SipException {
+            CallerInfo info = getCallerInfo(calleeSipUri);
+            if (!calleeSipUri.contains("@")) {
+                calleeSipUri += "@" + getSipDomain(mProfile);
+                if (info != null) info.phoneNumber = calleeSipUri;
+            }
             try {
                 SipProfile callee =
                         new SipProfile.Builder(calleeSipUri).build();
-                SipConnection c = new SipConnection(this, callee);
+                SipConnection c = new SipConnection(this, callee, info);
                 connections.add(c);
                 c.dial();
                 setState(Call.State.DIALING);
@@ -372,13 +402,16 @@ public class SipPhone extends SipPhoneBase {
             setState(State.DISCONNECTING);
         }
 
-        void take(SipAudioCall sipAudioCall, boolean makeCallWait) {
+        void initIncomingCall(SipAudioCall sipAudioCall, boolean makeCallWait) {
             SipProfile callee = sipAudioCall.getPeerProfile();
-            SipConnection c = new SipConnection(this, callee);
+            CallerInfo info = getCallerInfo(getUriString(callee));
+            if (info == null) info = getCallerInfo(callee.getUserName());
+            if (info == null) info = getCallerInfo(callee.getDisplayName());
+            SipConnection c = new SipConnection(this, callee, info);
             connections.add(c);
 
             Call.State newState = makeCallWait ? State.WAITING : State.INCOMING;
-            c.take(sipAudioCall, newState);
+            c.initIncomingCall(sipAudioCall, newState);
 
             setState(newState);
             notifyNewRingingConnectionP(c);
@@ -512,7 +545,7 @@ public class SipPhone extends SipPhoneBase {
                     setDisconnectCause(cause);
                 }
                 synchronized (SipPhone.class) {
-                    mState = Call.State.DISCONNECTED;
+                    setState(Call.State.DISCONNECTED);
                     mOwner.onConnectionEnded(SipConnection.this);
                     Log.v(LOG_TAG, "-------- connection ended: "
                             + mPeer.getUriString() + ": "
@@ -528,9 +561,9 @@ public class SipPhone extends SipPhoneBase {
                     Call.State newState = getCallStateFrom(call);
                     if (mState == newState) return;
                     if (newState == Call.State.INCOMING) {
-                        mState = mOwner.getState(); // INCOMING or WAITING
+                        setState(mOwner.getState()); // INCOMING or WAITING
                     } else {
-                        mState = newState;
+                        setState(newState);
                     }
                     mOwner.onConnectionStateChanged(SipConnection.this);
                     Log.v(LOG_TAG, "++******++ connection state changed: "
@@ -553,14 +586,27 @@ public class SipPhone extends SipPhoneBase {
             }
         };
 
-        public SipConnection(SipCall owner, SipProfile callee) {
-            super(callee.getSipDomain(), callee.getUriString());
+        public SipConnection(SipCall owner, SipProfile callee,
+                CallerInfo info) {
+            super(getUriString(callee));
             mOwner = owner;
             mPeer = callee;
+            if (info == null) info = createCallerInfo();
+            setUserData(info);
         }
 
-        void take(SipAudioCall sipAudioCall, Call.State newState) {
-            mState = newState;
+        private CallerInfo createCallerInfo() {
+            SipProfile p = mPeer;
+            String name = p.getDisplayName();
+            if (TextUtils.isEmpty(name)) name = p.getUserName();
+            CallerInfo info = new CallerInfo();
+            info.name = name;
+            info.phoneNumber = getUriString(p);
+            return info;
+        }
+
+        void initIncomingCall(SipAudioCall sipAudioCall, Call.State newState) {
+            setState(newState);
             mSipAudioCall = sipAudioCall;
             sipAudioCall.setListener(mAdapter); // call back to set state
             mIncoming = true;
@@ -584,7 +630,7 @@ public class SipPhone extends SipPhoneBase {
         }
 
         void dial() throws SipException {
-            mState = Call.State.DIALING;
+            setState(Call.State.DIALING);
             mSipAudioCall = mSipManager.makeAudioCall(mContext, mProfile,
                     mPeer, null);
             mSipAudioCall.setRingbackToneEnabled(false);
@@ -608,6 +654,13 @@ public class SipPhone extends SipPhoneBase {
         }
 
         @Override
+        protected void setState(Call.State state) {
+            if (state == mState) return;
+            super.setState(state);
+            mState = state;
+        }
+
+        @Override
         public Call.State getState() {
             return mState;
         }
@@ -619,7 +672,7 @@ public class SipPhone extends SipPhoneBase {
 
         @Override
         public String getAddress() {
-            return mPeer.getUriString();
+            return getUriString(mPeer);
         }
 
         @Override
@@ -633,32 +686,12 @@ public class SipPhone extends SipPhoneBase {
         }
 
         @Override
-        public Object getUserData() {
-            Object o = super.getUserData();
-            if (o == null) {
-                // FIXME: lookup contact with SIP URI?
-                CallerInfo info = CallerInfo.getCallerInfo(
-                        mContext, mPeer.getUserName());
-                if (info == null) {
-                    info = new CallerInfo();
-                    String name = mPeer.getDisplayName();
-                    if (TextUtils.isEmpty(name)) name = mPeer.getUserName();
-                    info.name = name;
-                    info.phoneNumber = getAddress();
-                }
-                setUserData(info);
-                o = info;
-            }
-            return o;
-        }
-
-        @Override
         public void hangup() throws CallStateException {
             Log.v(LOG_TAG, "hangup conn: " + mPeer.getUriString() + ": "
                     + ": on phone " + getPhone());
             try {
                 mSipAudioCall.endCall();
-                mState = Call.State.DISCONNECTING;
+                setState(Call.State.DISCONNECTING);
                 setDisconnectCause(DisconnectCause.LOCAL);
             } catch (SipException e) {
                 throw new CallStateException("hangup(): " + e);

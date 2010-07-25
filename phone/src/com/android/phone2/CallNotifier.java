@@ -1842,10 +1842,34 @@ public class CallNotifier extends Handler
             // Do final CNAP modifications.
             number = PhoneUtils.modifyForSpecialCnapCases(mPhone.getContext(), callerInfo,
                                                           number, presentation);
-            number = PhoneNumberUtils.stripSeparators(number);
+
+            // TODO: SIP: integrate this to PhoneApp later
+            if (!isUri(number)) {
+                number = PhoneNumberUtils.stripSeparators(number);
+            } else {
+                // See which one is in the contact: entire URL or username only.
+                // Use that one to create the call log.
+                Context context = mPhone.getContext();
+                CallerInfo info = CallerInfo.getCallerInfo(context, number);
+                if ((info == null) || (info.name == null)) {
+                    int index = number.indexOf("@");
+                    if (index > 0) {
+                        String number2 = number.substring(0, index);
+                        info = CallerInfo.getCallerInfo(context, number2);
+                        if ((info != null) && (info.name != null)) {
+                            number = number2;
+                        }
+                    }
+                }
+            }
             if (VDBG) log("getLogNumber: " + number);
             return number;
         }
+    }
+
+    private static boolean isUri(String number) {
+        // TODO: SIP: fix this after moving isUri() to PhoneNumberUtils
+        return OutgoingCallBroadcaster.isUri(number);
     }
 
     /**

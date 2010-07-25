@@ -199,12 +199,15 @@ public class OutgoingCallBroadcaster extends Activity {
         String action = intent.getAction();
         String number = PhoneNumberUtils.getNumberFromIntent(intent, this);
         Log.w(TAG, "getNumberFromIntent(): " + intent.getData() + " --> " + number);
-        /*
         if (number != null) {
-            number = PhoneNumberUtils.convertKeypadLettersToDigits(number);
-            number = PhoneNumberUtils.stripSeparators(number);
+            // TODO: SIP: integrate this to PhoneApp later
+            if (!isUri(number)) {
+                number = PhoneNumberUtils.convertKeypadLettersToDigits(number);
+                number = PhoneNumberUtils.stripSeparators(number);
+            } else {
+                number = stripSeparators(number);
+            }
         }
-        */
         final boolean emergencyNumber =
                 (number != null) && PhoneNumberUtils.isEmergencyNumber(number);
 
@@ -316,6 +319,46 @@ public class OutgoingCallBroadcaster extends Activity {
         sendOrderedBroadcast(broadcastIntent, PERMISSION,
                 new OutgoingCallReceiver(), null, Activity.RESULT_OK, number, null);
         // The receiver will finish our activity when it finally runs.
+    }
+
+    private static final char PAUSE = PhoneNumberUtils.PAUSE;
+    private static final char WAIT = PhoneNumberUtils.WAIT;
+    private static final char WILD = PhoneNumberUtils.WILD;
+
+    // TODO: SIP: move isUri() to PhoneNumberUtils later
+    // TODO: SIP: fix the check; how do we tell if it's a regular phone number
+    // or a username in a SIP URI
+    static boolean isUri(String phoneNumber) {
+        if (TextUtils.isEmpty(phoneNumber)) return false;
+        if (phoneNumber.contains("@")) return true;
+        char c = phoneNumber.charAt(0);
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private static String stripSeparators(String phoneNumber) {
+        if (phoneNumber == null) {
+            return null;
+        }
+        int len = phoneNumber.length();
+        StringBuilder ret = new StringBuilder(len);
+
+        for (int i = 0; i < len; i++) {
+            char c = phoneNumber.charAt(i);
+            if (isNonSeparator(c)) {
+                ret.append(c);
+            }
+        }
+
+        return ret.toString();
+    }
+
+    private static boolean isNonSeparator(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+                || c == '.' || c == '@' || PhoneNumberUtils.isNonSeparator(c);
     }
 
     // Implement onConfigurationChanged() purely for debugging purposes,

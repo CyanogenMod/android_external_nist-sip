@@ -43,7 +43,6 @@ abstract class SipConnectionBase extends Connection {
 
     private SipAudioCall mSipAudioCall;
 
-    private String mAddress = null;     // MAY BE NULL!!!
     private String dialString;          // outgoing calls only
     private String postDialString;      // outgoing calls only
     private int nextPostDialChar;       // index into postDialString
@@ -74,14 +73,29 @@ abstract class SipConnectionBase extends Connection {
     private DisconnectCause mCause = DisconnectCause.NOT_DISCONNECTED;
     private PostDialState postDialState = PostDialState.NOT_STARTED;
 
-    SipConnectionBase(String address, String calleeSipUri) {
-        mAddress = address;
+    SipConnectionBase(String calleeSipUri) {
         dialString = calleeSipUri;
 
         postDialString = PhoneNumberUtils.extractPostDialPortion(dialString);
 
         isIncoming = false;
         createTime = System.currentTimeMillis();
+    }
+
+    protected void setState(Call.State state) {
+        switch (state) {
+            case ACTIVE:
+                connectTimeReal = SystemClock.elapsedRealtime();
+                connectTime = System.currentTimeMillis();
+                break;
+            case DISCONNECTED:
+                duration = SystemClock.elapsedRealtime() - connectTimeReal;
+                disconnectTime = System.currentTimeMillis();
+                break;
+            case HOLDING:
+                holdingStartTime = SystemClock.elapsedRealtime();
+                break;
+        }
     }
 
     @Override
@@ -218,7 +232,7 @@ abstract class SipConnectionBase extends Connection {
 
     @Override
     public int getNumberPresentation() {
-        // FIXME: what's this for SIP?
+        // TODO: add PRESENTATION_URL
         return Connection.PRESENTATION_ALLOWED;
     }
 
