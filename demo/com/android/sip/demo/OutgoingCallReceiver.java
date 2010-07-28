@@ -45,7 +45,7 @@ public class OutgoingCallReceiver extends BroadcastReceiver {
 
         if (mSipManager == null) {
             mSipManager = SipManager.getInstance(context);
-            setResultData(null);
+            setResultData(number);
             return;
         }
 
