@@ -60,6 +60,7 @@ public class SipAutoRegistration extends Service {
                         + SipSettings.PROFILES_DIR);
                 for (SipProfile profile : sipProfileList) {
                     try {
+                        if (!profile.getAutoRegistration()) continue;
                         sipManager.open(profile,
                                 SipSettings.INCOMING_CALL_ACTION, null);
                     } catch (SipException e) {
