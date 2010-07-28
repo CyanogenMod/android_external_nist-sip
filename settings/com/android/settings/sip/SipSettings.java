@@ -70,7 +70,7 @@ public class SipSettings extends PreferenceActivity {
     private static final String UNREGISTERED = "NOT REGISTERED";
 
     public static final String INCOMING_CALL_ACTION =
-            "com.android.sip.demo.SipMain";
+            "com.android.phone.SIP_INCOMING_CALL";
 
     private static final int REQUEST_ADD_OR_EDIT_SIP_PROFILE = 1;
 
