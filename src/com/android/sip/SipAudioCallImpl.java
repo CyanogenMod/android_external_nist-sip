@@ -484,6 +484,8 @@ public class SipAudioCallImpl extends SipSessionAdapter
     public synchronized void setInCallMode() {
         ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
                 .setSpeakerphoneOn(false);
+        ((AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE))
+                .setMode(AudioManager.MODE_NORMAL);
     }
 
     public synchronized void setSpeakerMode() {
