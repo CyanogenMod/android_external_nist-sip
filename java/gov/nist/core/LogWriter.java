@@ -26,7 +26,6 @@
  ***************************************************************************/
 package gov.nist.core;
 
-import android.util.Log;
 import java.io.*;
 import java.util.Properties;
 
@@ -40,29 +39,29 @@ public class LogWriter implements StackLogger {
     public void logStackTrace() {
         // TODO
     }
-    
+
     public void logStackTrace(int traceLevel) {
         // TODO
     }
-    
+
     public int getLineCount() {
         return 0;
     }
-    
+
     public void logException(Throwable ex) {
-        Log.e(TAG, "", ex);
+        //Log.e(TAG, "", ex);
     }
     public void logDebug(String message) {
-        Log.d(TAG, message);
+        //Log.d(TAG, message);
     }
     public void logTrace(String message) {
-        Log.d(TAG, message);
+        //Log.d(TAG, message);
     }
     public void logFatalError(String message) {
-        Log.e(TAG, message);
+        //Log.e(TAG, message);
     }
     public void logError(String message) {
-        Log.e(TAG, message);
+        //Log.e(TAG, message);
     }
     public boolean isLoggingEnabled() {
         return mEnabled;
@@ -72,15 +71,15 @@ public class LogWriter implements StackLogger {
         return mEnabled;
     }
     public void logError(String message, Exception ex) {
-        Log.e(TAG, message, ex);
+        //Log.e(TAG, message, ex);
     }
     public void logWarning(String string) {
-        Log.w(TAG, string);
+        //Log.w(TAG, string);
     }
     public void logInfo(String string) {
-        Log.i(TAG, string);
+        //Log.i(TAG, string);
     }
-    
+
     public void disableLogging() {
         mEnabled = false;
     }
@@ -88,13 +87,13 @@ public class LogWriter implements StackLogger {
     public void enableLogging() {
         mEnabled = true;
     }
-    
+
     public void setBuildTimeStamp(String buildTimeStamp) {
     }
-     
+
     public void setStackProperties(Properties stackProperties) {
     }
-    
+
     public String getLoggerName() {
         return "Android SIP Logger";
     }
@@ -592,4 +591,3 @@ public class LogWriter implements StackLogger {
 //}
 
 // END android-deleted
-
