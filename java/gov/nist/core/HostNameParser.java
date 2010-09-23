@@ -33,7 +33,9 @@
  */
 package gov.nist.core;
 
-import gov.nist.javax.sdp.parser.Lexer;
+// BEGIN android-deleted
+//import gov.nist.javax.sdp.parser.Lexer;
+// END android-deleted
 
 import java.text.ParseException;
 
@@ -46,6 +48,9 @@ import java.text.ParseException;
  */
 
 public class HostNameParser extends ParserCore {
+// BEGIN android-added
+    private static LexerCore Lexer;
+// END android-added
 
     /**
      * Determines whether or not we should tolerate and strip address scope
