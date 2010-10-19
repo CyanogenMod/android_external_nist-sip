@@ -207,6 +207,7 @@ public class UDPMessageChannel extends MessageChannel implements
         this.myPort = messageProcessor.getPort();
         Thread mythread = new Thread(this);
         mythread.setDaemon(true);
+        mythread.setName("UDPMessageChannelThread");
 
         mythread.start();
 
