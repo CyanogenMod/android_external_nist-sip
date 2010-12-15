@@ -211,6 +211,9 @@ public class AuthenticationHelperImpl implements AuthenticationHelper {
             if ( challengedRequest.getRouteHeaders() == null ) {
                 Hop hop   = ((SIPClientTransaction) challengedTransaction).getNextHop();
                 SipURI sipUri = (SipURI) reoriginatedRequest.getRequestURI();
+                // BEGIN android-added
+                if ( !hop.getHost().equalsIgnoreCase(sipUri.getHost()) )
+                // END android-added
                 sipUri.setMAddrParam(hop.getHost());
                 if ( hop.getPort() != -1 ) sipUri.setPort(hop.getPort());
             }
