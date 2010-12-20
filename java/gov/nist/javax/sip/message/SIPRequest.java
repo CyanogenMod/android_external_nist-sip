@@ -234,9 +234,13 @@ public final class SIPRequest extends SIPMessage implements javax.sip.message.Re
         if (getViaHeaders() == null) {
             throw new ParseException(prefix + ViaHeader.NAME, 0);
         }
+        // BEGIN android-deleted
+        /*
         if (getMaxForwards() == null) {
             throw new ParseException(prefix + MaxForwardsHeader.NAME, 0);
         }
+        */
+        // END android-deleted
 
         if (getTopmostVia() == null)
             throw new ParseException("No via header in request! ", 0);
