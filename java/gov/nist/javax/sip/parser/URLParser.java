@@ -666,6 +666,10 @@ public class URLParser extends Parser {
                 }
             }
             return retval;
+        // BEGIN android-added
+        } catch (RuntimeException e) {
+            throw new ParseException("Invalid URL: " + lexer.getBuffer(), -1);
+        // END android-added
         } finally {
             if (debug)
                 dbg_leave("sipURL");
