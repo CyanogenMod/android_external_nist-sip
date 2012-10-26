@@ -890,7 +890,7 @@ public abstract class SIPTransactionStack implements SIPTransactionEventListener
      */
     public boolean isTransactionPendingAck(SIPServerTransaction serverTransaction) {
         String branchId = ((SIPRequest)serverTransaction.getRequest()).getTopmostVia().getBranch();
-        return this.terminatedServerTransactionsPendingAck.contains(branchId); 
+        return this.terminatedServerTransactionsPendingAck.containsKey(branchId);
     }
     
     /**
