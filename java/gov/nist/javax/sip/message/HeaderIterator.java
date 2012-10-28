@@ -82,8 +82,8 @@ public class HeaderIterator implements ListIterator {
         if (this.sipHeader == null)
             throw new IllegalStateException();
         if (toRemove) {
-            this.sipHeader = null;
             this.sipMessage.removeHeader(sipHeader.getName());
+            this.sipHeader = null;
         } else {
             throw new IllegalStateException();
         }
