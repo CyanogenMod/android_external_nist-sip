@@ -44,7 +44,9 @@ import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLServerSocketFactory;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * extended implementation of a network layer that allows to define a private java
@@ -67,20 +69,24 @@ public class SslNetworkLayer implements NetworkLayer {
             char[] keyStorePassword,
             String keyStoreType) throws GeneralSecurityException, FileNotFoundException, IOException
     {
-        SSLContext sslContext;
-        sslContext = SSLContext.getInstance("TLS");
-        String algorithm = KeyManagerFactory.getDefaultAlgorithm();
-        TrustManagerFactory tmFactory = TrustManagerFactory.getInstance(algorithm);
-        KeyManagerFactory kmFactory = KeyManagerFactory.getInstance(algorithm);
+        TrustManager[] trustAllCerts = new TrustManager[] { new X509TrustManager() {
+            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                return null;
+            }
+
+            public void checkClientTrusted(
+                    java.security.cert.X509Certificate[] certs, String authType) {
+            }
+
+            public void checkServerTrusted(
+                    java.security.cert.X509Certificate[] certs, String authType) {
+            }
+        } };
         SecureRandom secureRandom   = new SecureRandom();
         secureRandom.nextInt();
-        KeyStore keyStore = KeyStore.getInstance(keyStoreType);
-        KeyStore trustStore = KeyStore.getInstance(keyStoreType);
-        keyStore.load(new FileInputStream(keyStoreFile), keyStorePassword);
-        trustStore.load(new FileInputStream(trustStoreFile), keyStorePassword);
-        tmFactory.init(trustStore);
-        kmFactory.init(keyStore, keyStorePassword);
-        sslContext.init(kmFactory.getKeyManagers(), tmFactory.getTrustManagers(), secureRandom);
+        SSLContext sslContext;
+        sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, trustAllCerts, secureRandom);
         sslServerSocketFactory = sslContext.getServerSocketFactory();
         sslSocketFactory = sslContext.getSocketFactory();
     }
